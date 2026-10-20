@@ -76,6 +76,7 @@ STATE_WAIT_DISK     EQU 4           ; Waiting for DiskStack owner to exit DOS
 STATE_WAIT_AUX      EQU 5           ; Waiting for AuxStack owner to exit DOS
 STATE_ZOMBIE        EQU 6           ; Exited; awaiting lazy stack free()
 STATE_WAIT_IO       EQU 7           ; Three-way IOStack contention
+STATE_WAIT_SYNC     EQU 8           ; Blocked on Event, Mutex, Sem, or CondVar
 
 
 ; Thread Flags (tcb_flags)
@@ -137,9 +138,6 @@ LOAD_DATA_PTR MACRO reg_off, ptr_param
         mov  reg_off, ptr_param
     ENDIF
 ENDM
-
-; --- Additional Thread State for Synchronization Primitives ---
-STATE_WAIT_SYNC     EQU 8           ; Blocked on Event, Mutex, Sem, or CondVar
 
 ; --- Synchronization Object Structures (matching mthread.h) ---
 MT_EVENT STRUC
