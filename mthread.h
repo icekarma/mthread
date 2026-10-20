@@ -31,7 +31,7 @@ typedef unsigned char tid_t;
 #define MT_PRIO_LOW         1
 #define MT_PRIO_NORMAL      3
 #define MT_PRIO_HIGH        5
-#define MT_PRIO_REALTIME    7
+#define MT_PRIO_HIGHEST     7
 
 /* PIT Tick Rate Shift Factors for thread_init(pit_shift):
  *   0 = 1x stock (18.2 Hz / 54.9 ms)
