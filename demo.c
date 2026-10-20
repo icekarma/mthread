@@ -35,17 +35,21 @@ static void vram_puts(int row, int col, unsigned char attr, const char *s)
 }
 
 /*---------------------------------------------------------------------------
- * Format a 16-bit unsigned integer into 5 digits at (row, col) in VRAM
+ * Format a 32-bit unsigned long into 10 digits at (row, col) in VRAM
  *---------------------------------------------------------------------------*/
-static void vram_putu16(int row, int col, unsigned char attr, unsigned int val)
+static void vram_putu32(int row, int col, unsigned char attr, unsigned long val)
 {
-    char buf[6];
+    char buf[11];
     int i;
-    for (i = 4; i >= 0; --i) {
+    for (i = 9; i >= 0; --i) {
         buf[i] = (char)('0' + (val % 10));
         val /= 10;
     }
-    buf[5] = '\0';
+    buf[10] = '\0';
+    i = 0;
+    while (buf[i] == '0') {
+        buf[i++] = ' ';
+    }
     vram_puts(row, col, attr, buf);
 }
 
@@ -87,9 +91,12 @@ void MT_API compute_worker(void *arg)
 
         /* 3. Update progress bar in B800h VRAM */
         bar_pos = (bar_pos + 1) & 31;
-        vram[row * 80 + 28 + bar_pos] =
+        if ( bar_pos == 0 ) {
+            vram_puts( row, 29, attr, "                                " );
+        }
+        vram[row * 80 + 29 + bar_pos] =
             ((unsigned int)attr << 8) | ((bar_pos & 1) ? 0xFE : 0xDB);
-        vram_putu16(row, 62, 0x0E, (unsigned int)g_iter_count[self]);
+        vram_putu32(row, 63, 0x0E, g_iter_count[self]);
 
         /* 4. Every 32 steps, sleep briefly so MT_PRIO_LOW thread can run */
         if (bar_pos == 0) {
@@ -122,8 +129,8 @@ void MT_API low_prio_spinner(void *arg)
 
         g_iter_count[self]++;
         idx = (idx + 1) & 3;
-        vram[row * 80 + 28] = (0x0D << 8) | (unsigned char)spin_chars[idx];
-        vram_putu16(row, 62, 0x0E, (unsigned int)g_iter_count[self]);
+        vram[row * 80 + 38] = (0x0D << 8) | (unsigned char)spin_chars[idx];
+        vram_putu32(row, 63, 0x0E, g_iter_count[self]);
     }
 }
 
@@ -153,7 +160,7 @@ void MT_API disk_logger_worker(void *arg)
         }
 
         g_iter_count[self] = g_disk_writes;
-        vram_putu16(row, 62, 0x0E, g_disk_writes);
+        vram_putu32(row, 63, 0x0E, g_disk_writes);
         vram_puts(row, 16, 0x08, "[SLEEPING]");
 
         /* Sleep ~0.5s between disk writes */
