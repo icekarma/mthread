@@ -180,7 +180,7 @@ schedule_next_thread LABEL NEAR
 
     mov  dl, NO_THREAD              ; DL = best_tid found so far
     mov  dh, -1                     ; DH = best_prio found so far (-1 = none)
-    mov   ch, MAX_THREADS           ; CH = loop counter (8 threads)
+    mov  ch, MAX_THREADS           ; CH = loop counter (8 threads)
 
 sched_loop:
     ; Compute BX = OFFSET tcb_table + (AL * 64)
@@ -289,7 +289,7 @@ swap_sda_headers PROC NEAR
     push ds
     pop  es
     lea  di, [bx].TCB.sda_hdr
-    mov   cx, (SDA_HEADER_SIZE / 2)
+    mov  cx, (SDA_HEADER_SIZE / 2)
     push ds
     mov  si, sda_off
     mov  ds, sda_seg
@@ -431,6 +431,8 @@ isr_int21 PROC FAR
     ; 1. Fast-path Tier 0 (Stackless calls) & Program Termination (AH=4Ch/00h)
     cmp  ah, 33h
     je   dos_pass_through
+    cmp  ah, 4Ch
+    je   dos_pass_through
     cmp  ah, 50h
     je   dos_pass_through
     cmp  ah, 51h
@@ -438,8 +440,6 @@ isr_int21 PROC FAR
     cmp  ah, 62h
     je   dos_pass_through
     cmp  ah, 64h
-    je   dos_pass_through
-    cmp  ah, 4Ch
     je   dos_pass_through
     or   ah, ah
     jz   dos_pass_through
@@ -607,7 +607,7 @@ chk_rel_io:
     jne  finish_int21_exit
 
     ; Did we displace another thread's IOStack into io_swap_buf?
-    mov   ah, io_swap_owner
+    mov  ah, io_swap_owner
     cmp  ah, NO_THREAD
     je   clear_io_owner
 
@@ -678,7 +678,7 @@ boost_and_block_on_dos PROC NEAR
     SHL_IMM bx, 6
     add  bx, OFFSET tcb_table       ; BX = TCB of lock owner
 
-    mov   si, current_tcb            ; SI = TCB of current (blocking) thread
+    mov  si, current_tcb            ; SI = TCB of current (blocking) thread
     mov  al, [si].TCB.tcb_prio
     cmp  al, [bx].TCB.tcb_prio
     jle  no_prio_boost
@@ -1308,7 +1308,7 @@ wake_scan_next:
     jnz  wake_scan_loop
 
     ; Wake the winning thread and clear its bit from CL
-    mov   [si].TCB.tcb_state, STATE_READY
+    mov  [si].TCB.tcb_state, STATE_READY
     mov  bl, dl
     xor  bh, bh
     mov  al, tid_bit_lut[bx]
