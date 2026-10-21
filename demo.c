@@ -12,22 +12,38 @@
 #include "mthread.h"
 
 /* Direct color text-mode video RAM pointer (B800:0000) */
-static unsigned int __far * const vram =
-    (unsigned int __far *)0xB8000000L;
+static unsigned int  __far* const vram                = (unsigned int  __far*) 0xB8000000L;
+static unsigned int  __far* const g_bios_screen_cols  = (unsigned int  __far*) 0x0040004AL;
+static unsigned char __far* const g_bios_screen_rows  = (unsigned char __far*) 0x00400084L;
+static unsigned char __far* const g_screen_video_mode = (unsigned char __far*) 0x00400049L;
 
-static volatile int g_running = 1;
-static volatile unsigned long g_iter_count[MT_MAX_THREADS];
-static volatile unsigned int  g_disk_writes = 0;
+static unsigned int               g_screen_cols;
+static unsigned int               g_screen_rows;
+
+static volatile int               g_running           = 1;
+static volatile unsigned int      g_disk_writes       = 0;
+static volatile unsigned long     g_iter_count[MT_MAX_THREADS] = { 0, };
 
 /* Caller-supplied static stack for Thread 3 (tests non-malloc stack path) */
 static unsigned char g_custom_stack[1024];
+
+/*---------------------------------------------------------------------------
+* Direct VRAM helper: clears the entire screen to black background, light gray text
+*---------------------------------------------------------------------------*/
+static void vram_clear(void)
+{
+    unsigned int i;
+    for (i = 0; i < g_screen_cols * g_screen_rows; ++i) {
+        vram[i] = 0x0720;
+    }
+}
 
 /*---------------------------------------------------------------------------
  * Direct VRAM helper: writes a string at (row, col) with color attribute
  *---------------------------------------------------------------------------*/
 static void vram_puts(int row, int col, unsigned char attr, const char *s)
 {
-    unsigned int offset = (unsigned int)(row * 80 + col);
+    unsigned int offset = (unsigned int)(row * g_screen_cols + col);
     unsigned int hi = (unsigned int)attr << 8;
     while (*s) {
         vram[offset++] = hi | (unsigned char)(*s++);
@@ -35,7 +51,7 @@ static void vram_puts(int row, int col, unsigned char attr, const char *s)
 }
 
 /*---------------------------------------------------------------------------
- * Format a 32-bit unsigned long into 10 digits at (row, col) in VRAM
+ * Direct VRAM helper: format a 32-bit unsigned long into 10 digits at (row, col)
  *---------------------------------------------------------------------------*/
 static void vram_putu32(int row, int col, unsigned char attr, unsigned long val)
 {
@@ -94,7 +110,7 @@ void MT_API compute_worker(void *arg)
         if ( bar_pos == 0 ) {
             vram_puts( row, 29, attr, "                                " );
         }
-        vram[row * 80 + 29 + bar_pos] =
+        vram[row * g_screen_cols + 29 + bar_pos] =
             ((unsigned int)attr << 8) | ((bar_pos & 1) ? 0xFE : 0xDB);
         vram_putu32(row, 63, 0x0E, g_iter_count[self]);
 
@@ -129,7 +145,7 @@ void MT_API low_prio_spinner(void *arg)
 
         g_iter_count[self]++;
         idx = (idx + 1) & 3;
-        vram[row * 80 + 38] = (0x0D << 8) | (unsigned char)spin_chars[idx];
+        vram[row * g_screen_cols + 38] = (0x0D << 8) | (unsigned char)spin_chars[idx];
         vram_putu32(row, 63, 0x0E, g_iter_count[self]);
     }
 }
@@ -176,11 +192,14 @@ int main(void)
     tid_t t1, t2, t3, t4;
     unsigned int main_ticks = 0;
 
-    /* Clear screen via BIOS before starting scheduler */
-    _asm {
-        mov ax, 0003h
-        int 10h
+    g_screen_cols = (*g_bios_screen_cols == 0) ? 80 : *g_bios_screen_cols;
+    g_screen_rows = (*g_bios_screen_rows == 0) ? 25 : (*g_bios_screen_rows + 1);
+    if (*g_screen_video_mode != 0x03) {
+        printf("Error: This demo requires BIOS mode 3.\n");
+        return 1;
     }
+
+    vram_clear();
 
     vram_puts(1, 2, 0x1F,
         " === MS-DOS 8086 PREEMPTIVE MULTITHREADING TEST HARNESS === ");
@@ -191,10 +210,10 @@ int main(void)
     vram_puts(6, 2, 0x07,
         "-------------------------------------------------------------------");
 
-    vram_puts(8,  2, 0x0F, "TID 1 (NORM)  [RUNNING ]  [                                ]     0");
-    vram_puts(10, 2, 0x0F, "TID 2 (NORM)  [RUNNING ]  [                                ]     0");
-    vram_puts(12, 2, 0x07, "TID 3 (LOW )  [PREEMPT ]  Spinner: [ ] (Runs when 1&2 sleep)     0");
-    vram_puts(14, 2, 0x07, "TID 4 (HIGH)  [SLEEPING]  File Logger (MTTEST.LOG)               0");
+    vram_puts(8,  2, 0x0F, "TID 1 (NORM)  [RUNNING ]  [                                ]");
+    vram_puts(10, 2, 0x0F, "TID 2 (NORM)  [RUNNING ]  [                                ]");
+    vram_puts(12, 2, 0x07, "TID 3 (LOW )  [PREEMPT ]  Spinner: [ ] (Runs when 1&2 sleep)");
+    vram_puts(14, 2, 0x07, "TID 4 (HIGH)  [SLEEPING]  File Logger (MTTEST.LOG)");
     vram_puts(17, 2, 0x0A, "Press 'Q' or ESC to shut down cleanly and return to DOS...");
 
     /* Remove previous log file if present */
@@ -204,8 +223,8 @@ int main(void)
     thread_init(MT_TICK_73HZ, MT_PRIO_NORMAL);
 
     /* Spawn 2 Normal-priority compute threads with auto-allocated (NULL/0) stacks */
-    t1 = thread_create(compute_worker, (void *)1, NULL, 0, MT_PRIO_NORMAL);
-    t2 = thread_create(compute_worker, (void *)2, NULL, 0, MT_PRIO_NORMAL);
+    t1 = thread_create(compute_worker, (void*)1, NULL, 0, MT_PRIO_NORMAL);
+    t2 = thread_create(compute_worker, (void*)2, NULL, 0, MT_PRIO_NORMAL);
 
     /* Spawn 1 Low-priority spinner thread with caller-supplied static stack */
     t3 = thread_create(low_prio_spinner, NULL,
