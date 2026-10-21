@@ -16,39 +16,53 @@
 
 #define RING_SIZE 8
 
-static unsigned int __far * const vram =
-    (unsigned int __far *)0xB8000000L;
+ /* Direct color text-mode video RAM pointer (B800:0000) */
+static unsigned int  __far* const vram                = (unsigned int  __far*) 0xB8000000L;
+static unsigned int  __far* const g_bios_screen_cols  = (unsigned int  __far*) 0x0040004AL;
+static unsigned char __far* const g_bios_screen_rows  = (unsigned char __far*) 0x00400084L;
+static unsigned char __far* const g_screen_video_mode = (unsigned char __far*) 0x00400049L;
 
-static volatile int g_running = 1;
+static unsigned int               g_screen_cols;
+static unsigned int               g_screen_rows;
+
+static volatile int               g_running           = 1;
 
 /* 1. Events: Manual-reset start gate & Auto-reset high-prio trigger */
-static mt_event_t g_start_ev;
-static mt_event_t g_high_trig_ev;
+static mt_event_t                 g_start_ev;
+static mt_event_t                 g_high_trig_ev;
 
 /* 2. Priority Inheritance Mutex */
-static mt_mutex_t g_pi_mtx;
-static volatile unsigned int g_pi_handoffs = 0;
-static volatile unsigned int g_med_hog_loops = 0;
+static mt_mutex_t                 g_pi_mtx;
+static volatile unsigned int      g_pi_handoffs       = 0;
+static volatile unsigned int      g_med_hog_loops     = 0;
 
 /* 3. Counting Semaphores for 8-slot Ring Buffer */
-static mt_sem_t g_sem_empty;
-static mt_sem_t g_sem_filled;
-static volatile char g_ring_buf[RING_SIZE];
-static volatile unsigned int g_head = 0;
-static volatile unsigned int g_tail = 0;
+static mt_sem_t                   g_sem_empty;
+static mt_sem_t                   g_sem_filled;
+static volatile char              g_ring_buf[RING_SIZE];
+static volatile unsigned int      g_head              = 0;
+static volatile unsigned int      g_tail              = 0;
 
 /* 4. Condition Variable + Mutex for Completed Batches */
-static mt_mutex_t g_batch_mtx;
-static mt_cond_t  g_batch_cv;
-static volatile unsigned int g_items_consumed = 0;
-static volatile unsigned int g_batches_ready  = 0;
+static mt_mutex_t                 g_batch_mtx;
+static mt_cond_t                  g_batch_cv;
+static volatile unsigned int      g_items_consumed    = 0;
+static volatile unsigned int      g_batches_ready     = 0;
 
 /*---------------------------------------------------------------------------
  * Direct VRAM helpers
  *---------------------------------------------------------------------------*/
+static void vram_clear(void)
+{
+    unsigned int i;
+    for (i = 0; i < g_screen_cols * g_screen_rows; ++i) {
+        vram[i] = 0x0720;
+    }
+}
+
 static void vram_puts(int row, int col, unsigned char attr, const char *s)
 {
-    unsigned int offset = (unsigned int)(row * 80 + col);
+    unsigned int offset = (unsigned int)(row * g_screen_cols + col);
     unsigned int hi = (unsigned int)attr << 8;
     while (*s) {
         vram[offset++] = hi | (unsigned char)(*s++);
@@ -64,6 +78,10 @@ static void vram_putu16(int row, int col, unsigned char attr, unsigned int val)
         val /= 10;
     }
     buf[5] = '\0';
+    i = 0;
+    while (buf[i] == '0') {
+        buf[i++] = ' ';
+    }
     vram_puts(row, col, attr, buf);
 }
 
@@ -75,7 +93,6 @@ void MT_API low_lock_holder(void *arg)
     unsigned int step;
     volatile unsigned int burn;
     int row = 7;
-    (void)arg;
 
     vram_puts(row, 16, 0x0E, "[WAIT GATE]");
     event_wait(&g_start_ev);
@@ -104,7 +121,7 @@ void MT_API low_lock_holder(void *arg)
                 /* Busy work inside mutex critical section */
             }
 
-            vram[row * 80 + 29 + step] =
+            vram[row * g_screen_cols + 29 + step] =
                 ((step >= 8 ? 0x2F : 0x1F) << 8) | 0xFE;
         }
 
@@ -121,7 +138,6 @@ void MT_API med_cpu_hog(void *arg)
     unsigned int idx = 0;
     volatile unsigned int burn;
     int row = 9;
-    (void)arg;
 
     vram_puts(row, 16, 0x0E, "[WAIT GATE]");
     event_wait(&g_start_ev);
@@ -133,8 +149,8 @@ void MT_API med_cpu_hog(void *arg)
         }
         g_med_hog_loops++;
         idx = (idx + 1) & 3;
-        vram[row * 80 + 29] = (0x0E << 8) | (unsigned char)spin[idx];
-        vram_putu16(row, 64, 0x0E, g_med_hog_loops);
+        vram[row * g_screen_cols + 30] = (0x0E << 8) | (unsigned char)spin[idx];
+        vram_putu16(row, 68, 0x0E, g_med_hog_loops);
 
         /* Brief sleep every 16 loops so LOW thread can initially grab mutex */
         if ((g_med_hog_loops & 15) == 0) {
@@ -151,7 +167,6 @@ void MT_API med_cpu_hog(void *arg)
 void MT_API high_lock_waiter(void *arg)
 {
     int row = 11;
-    (void)arg;
 
     vram_puts(row, 16, 0x0E, "[WAIT GATE]");
     event_wait(&g_start_ev);
@@ -167,7 +182,7 @@ void MT_API high_lock_waiter(void *arg)
 
         g_pi_handoffs++;
         vram_puts(row, 16, 0x0A, "[GOT LOCK!]");
-        vram_putu16(row, 64, 0x0A, g_pi_handoffs);
+        vram_putu16(row, 68, 0x0A, g_pi_handoffs);
 
         mutex_unlock(&g_pi_mtx);
     }
@@ -182,7 +197,6 @@ void MT_API sem_producer(void *arg)
     char next_ch = 'A';
     unsigned int slot;
     unsigned int produced = 0;
-    (void)arg;
 
     vram_puts(row, 16, 0x0E, "[WAIT GATE]");
     event_wait(&g_start_ev);
@@ -198,11 +212,11 @@ void MT_API sem_producer(void *arg)
         g_head = (slot + 1) & (RING_SIZE - 1);
 
         /* Render item into visual ring buffer on row 15 */
-        vram[15 * 80 + 30 + slot * 3] = (0x2F << 8) | (unsigned char)next_ch;
+        vram[15 * g_screen_cols + 30 + slot * 3] = (0x2F << 8) | (unsigned char)next_ch;
 
         next_ch = (next_ch == 'Z') ? 'A' : (char)(next_ch + 1);
         produced++;
-        vram_putu16(row, 64, 0x0E, produced);
+        vram_putu16(row, 68, 0x0E, produced);
 
         sem_post(&g_sem_filled);
 
@@ -223,7 +237,6 @@ void MT_API sem_consumer(void *arg)
     int row = 16;
     unsigned int slot;
     char ch;
-    (void)arg;
 
     vram_puts(row, 16, 0x0E, "[WAIT GATE]");
     event_wait(&g_start_ev);
@@ -239,15 +252,15 @@ void MT_API sem_consumer(void *arg)
         g_tail = (slot + 1) & (RING_SIZE - 1);
 
         /* Clear slot in visual ring buffer on row 15 */
-        vram[15 * 80 + 30 + slot * 3] = (0x08 << 8) | '.';
-        vram[row * 80 + 42] = (0x1F << 8) | (unsigned char)ch;
+        vram[15 * g_screen_cols + 30 + slot * 3] = (0x08 << 8) | '.';
+        vram[row * g_screen_cols + 41] = (0x1F << 8) | (unsigned char)ch;
 
         sem_post(&g_sem_empty);
 
         /* Update batch state under g_batch_mtx and signal CondVar every 8 items */
         mutex_lock(&g_batch_mtx);
         g_items_consumed++;
-        vram_putu16(row, 64, 0x0E, g_items_consumed);
+        vram_putu16(row, 68, 0x0E, g_items_consumed);
         if ((g_items_consumed & 7) == 0) {
             g_batches_ready++;
             cond_signal(&g_batch_cv);
@@ -266,29 +279,32 @@ int main(void)
     unsigned int last_batch_seen = 0;
     int countdown;
 
-    /* Clear screen via BIOS mode 3 */
-    _asm {
-        mov ax, 0003h
-        int 10h
+    g_screen_cols = (*g_bios_screen_cols == 0) ? 80 : *g_bios_screen_cols;
+    g_screen_rows = (*g_bios_screen_rows == 0) ? 25 : (*g_bios_screen_rows + 1);
+    if (*g_screen_video_mode != 0x03) {
+        printf("Error: This demo requires BIOS mode 3.\n");
+        return 1;
     }
+
+    vram_clear();
 
     vram_puts(1, 2, 0x1F,
         " === MS-DOS 8086 SYNCHRONIZATION PRIMITIVES SHOWCASE (SYNCDEMO) === ");
     vram_puts(3, 2, 0x07,
         "Primitives: Manual/Auto Events | Priority-Inherited Mutex | Semaphores | CondVar");
     vram_puts(5, 2, 0x0B,
-        "Thread        State       Visual Telemetry                        Count");
+        "Thread        State        Visual Telemetry                       Count");
     vram_puts(6, 2, 0x07,
         "-----------------------------------------------------------------------");
 
     vram_puts(7,  2, 0x0F, "TID 1 (LOW )  [INIT     ]  ........................ (PI Mutex)");
-    vram_puts(9,  2, 0x0F, "TID 2 (NORM)  [INIT     ]  [ ] Medium CPU Hog                       0");
-    vram_puts(11, 2, 0x0F, "TID 3 (HIGH)  [INIT     ]  Direct Mutex Handoffs:                   0");
-    vram_puts(14, 2, 0x0F, "TID 4 (PROD)  [INIT     ]  Semaphore Ring Producer                  0");
+    vram_puts(9,  2, 0x0F, "TID 2 (NORM)  [INIT     ]  [ ] Medium CPU Hog");
+    vram_puts(11, 2, 0x0F, "TID 3 (HIGH)  [INIT     ]  Direct Mutex Handoffs:");
+    vram_puts(14, 2, 0x0F, "TID 4 (PROD)  [INIT     ]  Semaphore Ring Producer");
     vram_puts(15, 2, 0x07, "              Ring Buffer: [ .  .  .  .  .  .  .  . ]");
-    vram_puts(16, 2, 0x0F, "TID 5 (CONS)  [INIT     ]  Last Item: [ ]                           0");
-    vram_puts(18, 2, 0x0E, "TID 0 (MAIN)  CondVar Batches (8 items/batch) Completed:            0");
-    vram_puts(21, 2, 0x0A, "Starting Gun Event Countdown: ");
+    vram_puts(16, 2, 0x0F, "TID 5 (CONS)  [INIT     ]  Last Item: [ ]");
+    vram_puts(18, 2, 0x0E, "TID 0 (MAIN)  CondVar Batches (8 items/batch) Completed:");
+    vram_puts(21, 2, 0x0A, "Starting Gun Event Countdown:");
 
     /* Initialize primitives */
     event_init(&g_start_ev, 1, 0);     /* Manual-reset, initially non-signaled */
@@ -336,7 +352,7 @@ int main(void)
         last_batch_seen = g_batches_ready;
         mutex_unlock(&g_batch_mtx);
 
-        vram_putu16(18, 64, 0x0A, last_batch_seen);
+        vram_putu16(18, 68, 0x0A, last_batch_seen);
     }
 
     /* Wake any blocked threads so they observe g_running == 0 and exit cleanly */
