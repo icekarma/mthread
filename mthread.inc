@@ -14,8 +14,10 @@ SHL_IMM MACRO dest, count
                 shl dest, 1
             ENDM
         ELSE
+            push cx
             mov cl, count
             shl dest, cl
+            pop cx
         ENDIF
     ENDIF
 ENDM
@@ -29,8 +31,10 @@ SHR_IMM MACRO dest, count
                 shr dest, 1
             ENDM
         ELSE
+            push cx
             mov cl, count
             shr dest, cl
+            pop cx
         ENDIF
     ENDIF
 ENDM
