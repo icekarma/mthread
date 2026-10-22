@@ -1,6 +1,5 @@
 ;=============================================================================
-; MTHREAD.ASM - Part 1: Data Segment, Context Switcher & Timer ISR (MASM 6.11)
-; Assemble: ML /c /W3 /DMASM6 MTHREAD.ASM
+; MTHREAD.ASM: Preemptive Multithreading Kernel for MS-DOS
 ;=============================================================================
 
 ifndef MODEL_NAME
@@ -8,7 +7,12 @@ ifndef MODEL_NAME
 endif
 
 .MODEL MODEL_NAME, C
-.8086                               ; Or pass /G1 /G2 on ML command line
+
+IFDEF USE_186
+    .186
+ELSE
+    .8086
+ENDIF
 
 INCLUDE mthread.inc
 
@@ -1258,10 +1262,6 @@ set_prio_err:
     pop  ds
     ret
 thread_set_priority ENDP
-
-;=============================================================================
-; MTHREAD.ASM - Part 3: Synchronization Primitives (Event, Mutex, Sem, Cond)
-;=============================================================================
 
 ;-----------------------------------------------------------------------------
 ; wake_highest_waiter - Finds & wakes the highest-priority thread in a bitmask
