@@ -1,73 +1,21 @@
 /*===========================================================================
  * demo.c - Verification Harness for MTHREAD (MSC 7.00 / MASM 6.11)
- *
- * Build (Small Model, Strict 8086, Stack Probes ENABLED):
- *   ML /c /W3 /DMODEL_NAME=SMALL MTHREAD.ASM
- *   CL /AS /W3 demo.c MTHREAD.OBJ
  *===========================================================================*/
+
+#include <conio.h>
+#include <dos.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <dos.h>
-#include <conio.h>
+
 #include "mthread.h"
+#include "video.h"
 
-/* Direct color text-mode video RAM pointer (B800:0000) */
-static unsigned int  __far* const vram                = (unsigned int  __far*) 0xB8000000L;
-static unsigned int  __far* const g_bios_screen_cols  = (unsigned int  __far*) 0x0040004AL;
-static unsigned char __far* const g_bios_screen_rows  = (unsigned char __far*) 0x00400084L;
-static unsigned char __far* const g_screen_video_mode = (unsigned char __far*) 0x00400049L;
-
-static unsigned int               g_screen_cols;
-static unsigned int               g_screen_rows;
-
-static volatile int               g_running           = 1;
-static volatile unsigned int      g_disk_writes       = 0;
-static volatile unsigned long     g_iter_count[MT_MAX_THREADS] = { 0, };
+static volatile int           g_running                    = 1;
+static volatile unsigned int  g_disk_writes                = 0;
+static volatile unsigned long g_iter_count[MT_MAX_THREADS] = { 0, };
 
 /* Caller-supplied static stack for Thread 3 (tests non-malloc stack path) */
-static unsigned char g_custom_stack[1024];
-
-/*---------------------------------------------------------------------------
-* Direct VRAM helper: clears the entire screen to black background, light gray text
-*---------------------------------------------------------------------------*/
-static void vram_clear(void)
-{
-    unsigned int i;
-    for (i = 0; i < g_screen_cols * g_screen_rows; ++i) {
-        vram[i] = 0x0720;
-    }
-}
-
-/*---------------------------------------------------------------------------
- * Direct VRAM helper: writes a string at (row, col) with color attribute
- *---------------------------------------------------------------------------*/
-static void vram_puts(int row, int col, unsigned char attr, const char *s)
-{
-    unsigned int offset = (unsigned int)(row * g_screen_cols + col);
-    unsigned int hi = (unsigned int)attr << 8;
-    while (*s) {
-        vram[offset++] = hi | (unsigned char)(*s++);
-    }
-}
-
-/*---------------------------------------------------------------------------
- * Direct VRAM helper: format a 32-bit unsigned long into 10 digits at (row, col)
- *---------------------------------------------------------------------------*/
-static void vram_putu32(int row, int col, unsigned char attr, unsigned long val)
-{
-    char buf[11];
-    int i;
-    for (i = 9; i >= 0; --i) {
-        buf[i] = (char)('0' + (val % 10));
-        val /= 10;
-    }
-    buf[10] = '\0';
-    i = 0;
-    while (buf[i] == '0') {
-        buf[i++] = ' ';
-    }
-    vram_puts(row, col, attr, buf);
-}
+static unsigned char          g_custom_stack[1024];
 
 /*---------------------------------------------------------------------------
  * Recursive function to trigger MSC 7.00 __chkstk against DGROUP:STKHQQ
@@ -85,7 +33,7 @@ static unsigned int stack_probe_test(unsigned int depth)
 /*---------------------------------------------------------------------------
  * Worker Thread (TIDs 1 & 2): Normal Priority Preemptive Compute + Sleep
  *---------------------------------------------------------------------------*/
-void MT_API compute_worker(void *arg)
+static void MT_API compute_worker(void *arg)
 {
     int id = (int)(unsigned int)arg;
     tid_t self = thread_self();
@@ -96,7 +44,7 @@ void MT_API compute_worker(void *arg)
 
     while (g_running) {
         /* 1. Exercise __chkstk on this thread's stack */
-        (void)stack_probe_test(6);
+        stack_probe_test(6);
 
         /* 2. Do pure CPU-bound work (NO yield!) so INT 08h must preempt us */
         for (burn = 0; burn < 8000; ++burn) {
@@ -110,8 +58,7 @@ void MT_API compute_worker(void *arg)
         if ( bar_pos == 0 ) {
             vram_puts( row, 29, attr, "                                " );
         }
-        vram[row * g_screen_cols + 29 + bar_pos] =
-            ((unsigned int)attr << 8) | ((bar_pos & 1) ? 0xFE : 0xDB);
+        vram_putc(row, 29 + bar_pos, attr, (unsigned char)((bar_pos & 1) ? 0xFE : 0xDB));
         vram_putu32(row, 63, 0x0E, g_iter_count[self]);
 
         /* 4. Every 32 steps, sleep briefly so MT_PRIO_LOW thread can run */
@@ -127,17 +74,16 @@ void MT_API compute_worker(void *arg)
  * Background Thread (TID 3): Low-Priority CPU Spinner (never sleeps!)
  * Runs ONLY when higher-priority threads are sleeping or blocked.
  *---------------------------------------------------------------------------*/
-void MT_API low_prio_spinner(void *arg)
+static void MT_API low_prio_spinner(void *arg)
 {
     static const char spin_chars[] = "|/-\\";
     tid_t self = thread_self();
     int row = 12;
     unsigned int idx = 0;
     volatile unsigned int burn;
-    (void)arg;
 
     while (g_running) {
-        (void)stack_probe_test(6);
+        stack_probe_test(6);
 
         for (burn = 0; burn < 4000; ++burn) {
             /* Busy loop preempted by timer */
@@ -145,7 +91,7 @@ void MT_API low_prio_spinner(void *arg)
 
         g_iter_count[self]++;
         idx = (idx + 1) & 3;
-        vram[row * g_screen_cols + 38] = (0x0D << 8) | (unsigned char)spin_chars[idx];
+        vram_putc(row, 38, 0x0D, (unsigned char)spin_chars[idx]);
         vram_putu32(row, 63, 0x0E, g_iter_count[self]);
     }
 }
@@ -153,15 +99,14 @@ void MT_API low_prio_spinner(void *arg)
 /*---------------------------------------------------------------------------
  * Disk I/O Thread (TID 4): Exercises INT 21h DiskStack (fopen/fprintf/fclose)
  *---------------------------------------------------------------------------*/
-void MT_API disk_logger_worker(void *arg)
+static void MT_API disk_logger_worker(void *arg)
 {
     tid_t self = thread_self();
     int row = 14;
     FILE *fp;
-    (void)arg;
 
     while (g_running) {
-        (void)stack_probe_test(4);
+        stack_probe_test(4);
         vram_puts(row, 16, 0x0C, "[DISK I/O]");
 
         fp = fopen("MTTEST.LOG", "at");
@@ -192,15 +137,8 @@ int main(void)
     tid_t t1, t2, t3, t4;
     unsigned int main_ticks = 0;
 
-    g_screen_cols = (*g_bios_screen_cols == 0) ? 80 : *g_bios_screen_cols;
-    g_screen_rows = (*g_bios_screen_rows == 0) ? 25 : (*g_bios_screen_rows + 1);
-    if (*g_screen_video_mode != 0x03) {
-        printf("Error: This demo requires BIOS mode 3.\n");
-        return 1;
-    }
-
+    video_init();
     vram_clear();
-
     vram_puts(1, 2, 0x1F,
         " === MS-DOS 8086 PREEMPTIVE MULTITHREADING TEST HARNESS === ");
     vram_puts(3, 2, 0x07,
@@ -243,15 +181,9 @@ int main(void)
             }
         }
 
-        /* Position cursor on row 19 and print via DOS INT 21h IOStack (cprintf) */
-        _asm {
-            mov ah, 02h
-            xor bh, bh
-            mov dh, 19
-            mov dl, 2
-            int 10h
-        }
-        _cprintf("TID 0 (MAIN)  DOS IOStack Heartbeat #%u (Spawned TIDs: %u,%u,%u,%u)  ",
+        /* Position cursor on row 19 and print via DOS INT 21h IOStack (printf) */
+        video_gotoxy(19, 2);
+        printf("TID 0 (MAIN)  DOS IOStack Heartbeat #%u (Spawned TIDs: %u,%u,%u,%u)  ",
                  ++main_ticks, t1, t2, t3, t4);
 
         thread_sleep(18);
@@ -262,13 +194,7 @@ int main(void)
     thread_shutdown();
 
     /* Move cursor below table before returning to COMMAND.COM */
-    _asm {
-        mov ah, 02h
-        xor bh, bh
-        mov dh, 21
-        mov dl, 0
-        int 10h
-    }
+    video_gotoxy(21, 0);
     printf("Clean shutdown complete. Disk logger wrote %u entries to MTTEST.LOG.\n",
            g_disk_writes);
     return 0;
