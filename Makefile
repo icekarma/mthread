@@ -53,18 +53,21 @@ AS       = ml
 CFLAGS   = /c /A$(MCODE_UPPER) $(MSC_CPU_FLAGS) /W3 /Ox /Zi
 AFLAGS   = /c /W3 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) /Zi
 LINK_CMD = $(CC) /A$(MCODE_UPPER) $(MSC_CPU_FLAGS)
+LIB_CMD  = lib /NOLOGO
 !ELSEIF "$(COMPILER)" == "BCC"
 CC       = bcc
 AS       = tasm
 CFLAGS   = -c -m$(MCODE_LOWER) $(BCC_CPU_FLAGS) -w -O2 -N-
 AFLAGS   = /m2 /mx /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS)
 LINK_CMD = $(CC) -m$(MCODE_LOWER) $(BCC_CPU_FLAGS)
+LIB_CMD  = tlib
 !ELSEIF "$(COMPILER)" == "WATCOM"
 CC       = wcl
 AS       = ml
 CFLAGS   = -c -m$(MCODE_LOWER) $(WAT_CPU_FLAGS) -wx -ox -zc
 AFLAGS   = /c /W3 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS)
 LINK_CMD = $(CC) -m$(MCODE_LOWER) $(WAT_CPU_FLAGS)
+LIB_CMD  = wlib -q -b -n
 !ELSE
 !ERROR Invalid COMPILER="$(COMPILER)". Choose MSC, BCC, or WATCOM.
 !ENDIF
@@ -75,23 +78,40 @@ TARGETS = demo.exe syncdemo.exe
 all: $(TARGETS)
 
 mthread.obj: mthread.asm mthread.inc mthread.h
-    $(AS) $(AFLAGS) mthread.asm
+	$(AS) $(AFLAGS) mthread.asm
 
-demo.obj: demo.c mthread.h
-    $(CC) $(CFLAGS) demo.c
+videohlp.obj: videohlp.asm
+	$(AS) $(AFLAGS) videohlp.asm
 
-demo.exe: demo.obj mthread.obj
-    $(LINK_CMD) demo.obj mthread.obj
+video.obj: video.c video.h
+	$(CC) $(CFLAGS) video.c
 
-syncdemo.obj: syncdemo.c mthread.h
-    $(CC) $(CFLAGS) syncdemo.c
+vid.lib: video.obj videohlp.obj
+	-if exist vid.lib del vid.lib
+!IF "$(COMPILER)" == "MSC"
+	$(LIB_CMD) vid.lib +video.obj +videohlp.obj;
+!ELSE
+	$(LIB_CMD) vid.lib +video.obj +videohlp.obj
+!ENDIF
 
-syncdemo.exe: syncdemo.obj mthread.obj
-    $(LINK_CMD) syncdemo.obj mthread.obj
+demo.obj: demo.c mthread.h video.h
+	$(CC) $(CFLAGS) demo.c
+
+demo.exe: demo.obj mthread.obj vid.lib
+	$(LINK_CMD) demo.obj mthread.obj vid.lib
+
+syncdemo.obj: syncdemo.c mthread.h video.h
+	$(CC) $(CFLAGS) syncdemo.c
+
+syncdemo.exe: syncdemo.obj mthread.obj vid.lib
+	$(LINK_CMD) syncdemo.obj mthread.obj vid.lib
 
 clean:
-    -if exist *.obj del *.obj
-    -if exist *.exe del *.exe
-    -if exist *.map del *.map
-    -if exist *.bak del *.bak
-    -if exist mttest.log del mttest.log
+	-if exist *.obj del *.obj
+	-if exist *.exe del *.exe
+	-if exist *.lib del *.lib
+	-if exist *.map del *.map
+	-if exist *.bak del *.bak
+	-if exist mttest.log del mttest.log
+
+.PHONY: all clean
