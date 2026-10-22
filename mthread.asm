@@ -1230,6 +1230,35 @@ thread_self PROC PUBLIC
 thread_self ENDP
 
 ;-----------------------------------------------------------------------------
+; unsigned char MT_API thread_get_priority(tid_t tid)
+;-----------------------------------------------------------------------------
+thread_get_priority PROC PUBLIC, tid:BYTE
+    push ds
+    mov  ds, cs:[dgroup_seg]
+
+    mov  bl, tid
+    cmp  bl, MAX_THREADS
+    jae  get_prio_err
+
+    xor  bh, bh
+    SHL_IMM bx, 6
+    add  bx, OFFSET tcb_table
+
+    cmp  [bx].TCB.tcb_state, STATE_UNUSED
+    je   get_prio_err
+
+    mov  al, [bx].TCB.tcb_prio
+    xor  ah, ah
+    pop  ds
+    ret
+
+get_prio_err:
+    mov  ax, MT_ERR_INVALID
+    pop  ds
+    ret
+thread_get_priority ENDP
+
+;-----------------------------------------------------------------------------
 ; int MT_API thread_set_priority(tid_t tid, unsigned char new_prio)
 ;-----------------------------------------------------------------------------
 thread_set_priority PROC PUBLIC, tid:BYTE, new_prio:BYTE
