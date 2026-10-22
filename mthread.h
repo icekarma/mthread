@@ -9,7 +9,6 @@
 extern "C" {
 #endif
 
-/* Ensure standard C calling convention (__cdecl) even under OpenWatcom */
 #if defined(__WATCOMC__)
   #define MT_API __cdecl
 #else
@@ -34,9 +33,9 @@ typedef unsigned char tid_t;
 #define MT_PRIO_HIGHEST     7
 
 /* PIT Tick Rate Shift Factors for thread_init(pit_shift):
- *   0 = 1x stock (18.2 Hz / 54.9 ms)
- *   1 = 2x stock (36.4 Hz / 27.5 ms)
- *   2 = 4x stock (72.8 Hz / 13.7 ms)
+ *   0 = 1x stock ( 18.2 Hz / 54.9 ms)
+ *   1 = 2x stock ( 36.4 Hz / 27.5 ms)
+ *   2 = 4x stock ( 72.8 Hz / 13.7 ms)
  *   3 = 8x stock (145.6 Hz /  6.9 ms)
  */
 #define MT_TICK_18HZ        0
@@ -61,11 +60,12 @@ tid_t MT_API thread_create(thread_func_t func,
                            unsigned int  stack_size,
                            unsigned char priority);
 
-void  MT_API thread_yield(void);
-void  MT_API thread_sleep(unsigned int ticks);
-void  MT_API thread_exit(void);
-tid_t MT_API thread_self(void);
-int   MT_API thread_set_priority(tid_t tid, unsigned char new_prio);
+void          MT_API thread_yield(void);
+void          MT_API thread_sleep(unsigned int ticks);
+void          MT_API thread_exit(void);
+tid_t         MT_API thread_self(void);
+unsigned char MT_API thread_get_priority(tid_t tid);
+int           MT_API thread_set_priority(tid_t tid, unsigned char new_prio);
 
 /*===========================================================================
  * Synchronization Primitives (Events, Mutexes, Semaphores, Condition Vars)
