@@ -63,6 +63,8 @@ tid_t MT_API thread_create(thread_func_t func,
 void          MT_API thread_yield(void);
 void          MT_API thread_sleep(unsigned int ticks);
 void          MT_API thread_exit(void);
+int           MT_API thread_join(tid_t tid);
+void          MT_API thread_join_all(void);
 tid_t         MT_API thread_self(void);
 unsigned char MT_API thread_get_priority(tid_t tid);
 int           MT_API thread_set_priority(tid_t tid, unsigned char new_prio);

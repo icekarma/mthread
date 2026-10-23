@@ -31,7 +31,9 @@ tcb_table       TCB MAX_THREADS DUP (<>)
 
 current_tcb     DW  OFFSET tcb_table    ; Cached pointer to TCB[current_tid]
 current_tid     DB  0                   ; 0..7, or NO_THREAD (0FFh) when idle
-active_mask     DB  01h                 ; Bitmask of non-unused TCB slots
+active_mask     DB  01h                 ; Bitmask of in-use TCB slots
+join_all_mask   DB  00h                 ; Bitmask of threads in thread_join_all()
+join_wait_mask  DB  MAX_THREADS DUP (0) ; Per-TID bitmask of thread_join() waiters
 
 ; PIT & Timer Chaining State
 pit_shift_val   DB  0                   ; 0..3 (1x, 2x, 4x, 8x)
@@ -816,6 +818,12 @@ thread_init PROC PUBLIC USES si di ds, pit_shift:BYTE, main_prio:BYTE
     mov  current_tid, 0
     mov  current_tcb, OFFSET tcb_table
     mov  active_mask, 01h
+    mov  join_all_mask, 00h
+
+    mov  di, OFFSET join_wait_mask
+    mov  cx, (MAX_THREADS / 2)
+    xor  ax, ax
+    rep  stosw
 
     ; 3. Save original interrupt vectors
     mov  ax, 3508h
@@ -977,26 +985,37 @@ reap_zombie_stacks PROC NEAR
     mov  si, OFFSET tcb_table
     mov  di, MAX_THREADS
 reap_loop:
+    pushf
+    cli
     cmp  [si].TCB.tcb_state, STATE_ZOMBIE
-    jne  reap_next
+    jne  reap_next_popf
     test [si].TCB.tcb_flags, TCB_FLG_OWN_STACK
     jz   reap_mark_unused
 
+    ; Clear flag and latch pointer under CLI before calling C runtime free()
+    and  [si].TCB.tcb_flags, NOT TCB_FLG_OWN_STACK
+    mov  ax, [si].TCB.stk_alloc_off
+    mov  dx, [si].TCB.stk_alloc_seg
+    popf
+
     IF @DataSize
-        push [si].TCB.stk_alloc_seg
-        push [si].TCB.stk_alloc_off
+        push dx
+        push ax
         call free
         add  sp, 4
     ELSE
-        push [si].TCB.stk_alloc_off
+        push ax
         call free
         add  sp, 2
     ENDIF
 
+    pushf
+    cli
 reap_mark_unused:
     mov  [si].TCB.tcb_flags, 0
     mov  [si].TCB.tcb_state, STATE_UNUSED
-reap_next:
+reap_next_popf:
+    popf
     add  si, SIZEOF TCB
     dec  di
     jnz  reap_loop
@@ -1147,6 +1166,10 @@ resolve_stack_ptr:
     mov  [si].TCB.tcb_base_prio, al
     mov  [si].TCB.sleep_ticks, 0
     mov  [si].TCB.tcb_state, STATE_READY
+
+    mov  al, tid_bit_lut[di]
+    or   active_mask, al
+    mov  join_wait_mask[di], 0
     sti
 
     mov  ax, di                     ; Return new TID (1..7) in AL
@@ -1200,9 +1223,39 @@ thread_sleep ENDP
 thread_exit PROC PUBLIC
     mov  ds, cs:[dgroup_seg]
     cli
-    mov  bx, current_tcb
 
-    ; If stack was auto-allocated via malloc(), mark STATE_ZOMBIE for lazy free()
+    ; 1. Clear exiting thread's bit from active_mask
+    mov  bl, current_tid
+    xor  bh, bh
+    mov  al, tid_bit_lut[bx]
+    not  al
+    and  active_mask, al
+
+    ; 2. Wake any threads waiting in thread_join(current_tid)
+    xor  al, al
+    xchg al, join_wait_mask[bx]
+    or   al, al
+    jz   chk_join_all_wake
+    call wake_all_waiters
+
+chk_join_all_wake:
+    ; 3. If threads are waiting in thread_join_all() and no other active
+    ;    threads remain ((active_mask & ~join_all_mask) == 0), wake them!
+    mov  al, join_all_mask
+    or   al, al
+    jz   mark_exit_state
+    mov  ah, al
+    not  ah
+    test active_mask, ah
+    jnz  mark_exit_state
+
+    xor  al, al
+    xchg al, join_all_mask
+    call wake_all_waiters
+
+mark_exit_state:
+    ; 4. Mark TCB slot STATE_ZOMBIE (if malloc stack) or STATE_UNUSED
+    mov  bx, current_tcb
     test [bx].TCB.tcb_flags, TCB_FLG_OWN_STACK
     jnz  mark_zombie
     mov  [bx].TCB.tcb_state, STATE_UNUSED
@@ -1216,6 +1269,77 @@ exit_switch:
     mov  sp, OFFSET isr_stack_top
     jmp  schedule_next_thread
 thread_exit ENDP
+
+;-----------------------------------------------------------------------------
+; int MT_API thread_join(tid_t tid)
+; Blocks until thread `tid` exits and reclaims its stack if auto-allocated.
+;-----------------------------------------------------------------------------
+thread_join PROC PUBLIC USES si di ds, tid:BYTE
+    mov  dx, ds                     ; Save caller's DS in DX
+    mov  ds, cs:[dgroup_seg]
+
+    mov  bl, tid
+    cmp  bl, MAX_THREADS
+    jae  join_err_invalid
+    cmp  bl, current_tid
+    je   join_err_invalid           ; Cannot join self
+
+    xor  bh, bh
+    mov  di, bx                     ; DI = target tid (0..7)
+    mov  ah, tid_bit_lut[di]        ; AH = (1 << tid)
+
+    pushf
+    cli
+    test active_mask, ah            ; Is target thread still running?
+    jz   join_already_exited
+
+    ; Add current_tid to join_wait_mask[tid] and block
+    mov  bl, current_tid
+    xor  bh, bh
+    mov  al, tid_bit_lut[bx]
+    or   join_wait_mask[di], al
+    mov  ax, dx
+    call block_on_sync
+
+join_already_exited:
+    popf
+    call reap_zombie_stacks
+    xor  ax, ax                     ; Return MT_ERR_NONE (0)
+    ret
+
+join_err_invalid:
+    mov  ax, MT_ERR_INVALID
+    ret
+thread_join ENDP
+
+;-----------------------------------------------------------------------------
+; void MT_API thread_join_all(void)
+; Blocks until all other active threads have exited, then reaps zombie stacks.
+;-----------------------------------------------------------------------------
+thread_join_all PROC PUBLIC USES si di ds
+    mov  dx, ds                     ; Save caller's DS in DX
+    mov  ds, cs:[dgroup_seg]
+
+    mov  bl, current_tid
+    xor  bh, bh
+    mov  al, tid_bit_lut[bx]        ; AL = (1 << current_tid)
+    mov  ah, al
+    not  ah                         ; AH = ~(1 << current_tid)
+
+    pushf
+    cli
+    test active_mask, ah            ; Are any OTHER threads still active?
+    jz   join_all_already_done
+
+    or   join_all_mask, al          ; Register current_tid in join_all_mask
+    mov  ax, dx
+    call block_on_sync
+
+join_all_already_done:
+    popf
+    call reap_zombie_stacks
+    ret
+thread_join_all ENDP
 
 ;-----------------------------------------------------------------------------
 ; tid_t MT_API thread_self(void)
