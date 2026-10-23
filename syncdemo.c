@@ -313,7 +313,7 @@ int main(void)
     sem_post(&g_sem_filled);
     cond_broadcast(&g_batch_cv);
 
-    thread_sleep(40);
+    thread_join_all();
     thread_shutdown();
 
     video_gotoxy(23, 0);

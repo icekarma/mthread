@@ -189,8 +189,11 @@ int main(void)
         thread_sleep(18);
     }
 
-    /* Let worker threads observe g_running == 0 and hit thread_exit() */
-    thread_sleep(50);
+    /* Wait for each worker thread to exit and reclaim its stack */
+    thread_join(t1);
+    thread_join(t2);
+    thread_join(t3);
+    thread_join(t4);
     thread_shutdown();
 
     /* Move cursor below table before returning to COMMAND.COM */
