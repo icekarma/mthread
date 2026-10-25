@@ -20,6 +20,7 @@ INCLUDE mthread.inc
 EXTERNDEF C STKHQQ: WORD            ; MSC 7.00 stack-check lower bound in DGROUP
 EXTERNDEF C malloc: PROC
 EXTERNDEF C free:   PROC
+EXTERNDEF C atexit: PROC
 
 ;=============================================================================
 ; DATA SEGMENT (DGROUP)
@@ -35,6 +36,13 @@ current_tid     DB  0                   ; 0..7, or NO_THREAD (0FFh) when idle
 active_mask     DB  01h                 ; Bitmask of in-use TCB slots
 join_all_mask   DB  00h                 ; Bitmask of threads in thread_join_all()
 join_wait_mask  DB  MAX_THREADS DUP (0) ; Per-TID bitmask of thread_join() waiters
+
+; Termination, break & critical error state
+threads_active  DB  0                   ; 1 while vectors are hooked, 0 when unhooked
+atexit_regd     DB  0                   ; 1 once atexit(thread_abort) is registered
+break_flag      DB  0                   ; 1 if Ctrl+C or Ctrl+Break was pressed
+break_count     DB  0                   ; Consecutive Ctrl+C count (>=3 force-aborts)
+crit_err_code   DW  0                   ; Last INT 24h error (high=AH, low=DI)
 
 ; PIT & timer chaining state
 pit_shift_val   DB  0                   ; 0..3 (1x, 2x, 4x, 8x)
@@ -75,13 +83,26 @@ bios_lock       DB  0                   ; >0 when executing inside wrapped BIOS 
 in_scheduler    DB  0                   ; Reentrancy guard for scheduler
 calib_iostack   DB  0                   ; 1 during thread_init IOStack probe
 
-old_int08       DD  0                   ; Saved BIOS INT 08h vector
-old_int10       DD  0                   ; Saved BIOS Video vector
-old_int13       DD  0                   ; Saved BIOS Disk vector
-old_int15       DD  0                   ; Saved BIOS System Services vector
-old_int16       DD  0                   ; Saved BIOS Keyboard vector
-old_int17       DD  0                   ; Saved BIOS Printer vector
-old_int21       DD  0                   ; Saved DOS INT 21h vector
+old_int08       DD  0                   ; Saved BIOS Timer (IRQ0)
+old_int10       DD  0                   ; Saved BIOS Video
+old_int13       DD  0                   ; Saved BIOS Disk
+old_int15       DD  0                   ; Saved BIOS System Services
+old_int16       DD  0                   ; Saved BIOS Keyboard
+old_int17       DD  0                   ; Saved BIOS Printer
+old_int1b       DD  0                   ; Saved BIOS Ctrl+Break
+old_int20       DD  0                   ; Saved DOS Terminate Program
+old_int21       DD  0                   ; Saved DOS Function Dispatcher
+old_int23       DD  0                   ; Saved DOS Ctrl+C Handler
+old_int24       DD  0                   ; Saved DOS Critical Error Handler
+old_int25       DD  0                   ; Saved DOS Absolute Disk Read
+old_int26       DD  0                   ; Saved DOS Absolute Disk Write
+old_int27       DD  0                   ; Saved DOS Terminate & Stay Resident
+old_int29       DD  0                   ; Saved DOS Fast Console Output
+old_int2a       DD  0                   ; Saved DOS Network / Critical Section
+old_int2e       DD  0                   ; Saved DOS COMMAND.COM Execute
+old_int2f       DD  0                   ; Saved DOS Multiplex Interrupt
+old_int33       DD  0                   ; Saved Mouse Driver (if non-null)
+old_int67       DD  0                   ; Saved LIM EMS Driver (if non-null)
 
 ;-----------------------------------------------------------------------------
 ; isr_timer (INT 08h hardware timer handler)
@@ -89,8 +110,10 @@ old_int21       DD  0                   ; Saved DOS INT 21h vector
 isr_timer PROC FAR
     ; 1. Did this interrupt wake us from the built-in HLT idle loop?
     cmp  cs:[dgroup_seg], 0
-    je   chain_only                 ; Failsafe if fired before init finishes
+    jne  skip                       ; Failsafe if fired before init finishes
+    jmp  DWORD PTR cs:[old_int08]
 
+skip:
     mov  cs:[scratch_ds], ds
     mov  cs:[scratch_bx], bx
     mov  ds, cs:[dgroup_seg]
@@ -171,9 +194,6 @@ sleep_next:
 
     ; Fall through into the priority-based round-robin scheduler!
     jmp  SHORT schedule_next_thread
-
-chain_only:
-    jmp  DWORD PTR cs:[old_int08]
 isr_timer ENDP
 
 ;-----------------------------------------------------------------------------
@@ -433,13 +453,102 @@ soft_context_switch PROC NEAR
 soft_context_switch ENDP
 
 ;-----------------------------------------------------------------------------
+; BIOS interrupt wrappers (guard non-reentrant ROM BIOS routines via bios_lock)
+;-----------------------------------------------------------------------------
+DEFINE_BIOS_WRAPPER MACRO func_name, old_vec
+func_name PROC FAR
+    inc  cs:[bios_lock]
+    pushf
+    call DWORD PTR cs:[old_vec]
+    pushf
+    dec  cs:[bios_lock]
+    popf
+    retf 2                          ; Return preserving BIOS output flags!
+func_name ENDP
+ENDM
+
+DEFINE_BIOS_WRAPPER isr_int10, old_int10
+DEFINE_BIOS_WRAPPER isr_int13, old_int13
+DEFINE_BIOS_WRAPPER isr_int15, old_int15
+DEFINE_BIOS_WRAPPER isr_int17, old_int17
+DEFINE_BIOS_WRAPPER isr_int29, old_int29
+DEFINE_BIOS_WRAPPER isr_int2e, old_int2e
+DEFINE_BIOS_WRAPPER isr_int2f, old_int2f
+DEFINE_BIOS_WRAPPER isr_int33, old_int33
+DEFINE_BIOS_WRAPPER isr_int67, old_int67
+
+;-----------------------------------------------------------------------------
+; INT 16h wrapper also performs one-time IOStack offset calibration at init
+;-----------------------------------------------------------------------------
+isr_int16 PROC FAR
+    cmp  cs:[calib_iostack], 0
+    je   normal_int16
+
+    ; Record exact IOStack base offset inside SDA during AH=0Bh calibration call
+    push ds
+    push ax
+    mov  ds, cs:[dgroup_seg]
+    mov  ax, sp
+    sub  ax, (IOSTACK_SIZE - 32)    ; Account for DOS CON entry stack frame
+    mov  iostack_off, ax
+    mov  cs:[calib_iostack], 0
+    pop  ax
+    pop  ds
+
+normal_int16:
+    inc  cs:[bios_lock]
+    pushf
+    call DWORD PTR cs:[old_int16]
+    pushf
+    dec  cs:[bios_lock]
+    popf
+    retf 2
+isr_int16 ENDP
+
+;-----------------------------------------------------------------------------
+; isr_int1b - BIOS Ctrl+Break handler
+;-----------------------------------------------------------------------------
+isr_int1b PROC FAR
+    push ds
+    push ax
+    mov  ds, cs:[dgroup_seg]
+    mov  break_flag, 1
+    inc  break_count
+
+    ; Clear BIOS Ctrl+Break flag at 0040:0071h so DOS doesn't echo ^C
+    xor  ax, ax
+    mov  ds, ax
+    and  BYTE PTR ds:[0471h], 7Fh
+    pop  ax
+    pop  ds
+    iret
+isr_int1b ENDP
+
+;-----------------------------------------------------------------------------
+; isr_int20 - Legacy terminate trap (also catches CALL 5!)
+;-----------------------------------------------------------------------------
+isr_int20 PROC FAR
+    push ds
+    mov  ds, cs:[dgroup_seg]
+    call unhook_hardware
+    pop  ds
+    jmp  DWORD PTR cs:[old_int20]
+isr_int20 ENDP
+
+;-----------------------------------------------------------------------------
 ; isr_int21 - Hybrid MS-DOS INT 21h gatekeeper & stack-tier manager
 ;-----------------------------------------------------------------------------
 isr_int21 PROC FAR
-    ; 1. Fast-path Tier 0 (Stackless calls) & Program Termination (AH=4Ch/00h)
-    cmp  ah, 33h
-    je   dos_pass_through
+    ; 1. Trap program termination (AH=00h, AH=31h, AH=4Ch) to unhook cleanly
+    or   ah, ah
+    jz   dos_terminate_trap
+    cmp  ah, 31h
+    je   dos_terminate_trap
     cmp  ah, 4Ch
+    je   dos_terminate_trap
+
+    ; Fast-path tier 0 (stackless calls)
+    cmp  ah, 33h
     je   dos_pass_through
     cmp  ah, 50h
     je   dos_pass_through
@@ -449,8 +558,6 @@ isr_int21 PROC FAR
     je   dos_pass_through
     cmp  ah, 64h
     je   dos_pass_through
-    or   ah, ah
-    jz   dos_pass_through
 
     ; Save caller's DS, AX, BX, ES on caller's user stack while classifying
     push ds
@@ -674,6 +781,13 @@ dos_pop_and_pass:
     pop  ds
 dos_pass_through:
     jmp  DWORD PTR cs:[old_int21]
+
+dos_terminate_trap:
+    push ds
+    mov  ds, cs:[dgroup_seg]
+    call unhook_hardware
+    pop  ds
+    jmp  DWORD PTR cs:[old_int21]
 isr_int21 ENDP
 
 ;-----------------------------------------------------------------------------
@@ -729,50 +843,202 @@ wake_dos_next:
 restore_prio_and_wake ENDP
 
 ;-----------------------------------------------------------------------------
-; BIOS Interrupt Wrappers (Guard non-reentrant ROM BIOS routines via bios_lock)
+; isr_int23 - DOS Ctrl+C handler (1st/2nd press = cooperative; 3rd = abort)
 ;-----------------------------------------------------------------------------
-DEFINE_BIOS_WRAPPER MACRO func_name, old_vec
-func_name PROC FAR
-    inc  cs:[bios_lock]
-    pushf
-    call DWORD PTR cs:[old_vec]
-    pushf
-    dec  cs:[bios_lock]
-    popf
-    retf 2                          ; Return preserving BIOS output flags!
-func_name ENDP
-ENDM
+isr_int23 PROC FAR
+    push ds
+    mov  ds, cs:[dgroup_seg]
+    mov  break_flag, 1
+    inc  break_count
+    cmp  break_count, 3
+    jae  force_ctrl_c_abort
+    pop  ds
+    iret
 
-DEFINE_BIOS_WRAPPER isr_int10, old_int10
-DEFINE_BIOS_WRAPPER isr_int13, old_int13
-DEFINE_BIOS_WRAPPER isr_int15, old_int15
-DEFINE_BIOS_WRAPPER isr_int17, old_int17
+force_ctrl_c_abort:
+    call unhook_hardware
+    pop  ds
+    stc                             ; Carry set + RETF forces DOS to abort app
+    retf
+isr_int23 ENDP
 
-; INT 16h wrapper also performs one-time IOStack offset calibration at init
-isr_int16 PROC FAR
-    cmp  cs:[calib_iostack], 0
-    je   normal_int16
-
-    ; Record exact IOStack base offset inside SDA during AH=0Bh calibration call
+;-----------------------------------------------------------------------------
+; isr_int24 - DOS critical error handler (suppresses prompt, returns Fail=03h)
+;-----------------------------------------------------------------------------
+isr_int24 PROC FAR
     push ds
     push ax
     mov  ds, cs:[dgroup_seg]
-    mov  ax, sp
-    sub  ax, (IOSTACK_SIZE - 32)    ; Account for DOS CON entry stack frame
-    mov  iostack_off, ax
-    mov  cs:[calib_iostack], 0
+    mov  ax, di
+    mov  BYTE PTR crit_err_code, al
+    mov  BYTE PTR crit_err_code+1, ah
     pop  ax
     pop  ds
+    mov  al, 03h                    ; AL = 03h: Fail system call
+    iret
+isr_int24 ENDP
 
-normal_int16:
+;-----------------------------------------------------------------------------
+; INT 25h & INT 26h wrappers (preserve DOS's left-on-stack FLAGS convention!)
+;-----------------------------------------------------------------------------
+DEFINE_ABS_DISK_WRAPPER MACRO func_name, old_vec
+func_name PROC FAR
     inc  cs:[bios_lock]
     pushf
-    call DWORD PTR cs:[old_int16]
+    call DWORD PTR cs:[old_vec]     ; DOS leaves our pushed FLAGS word on stack
+    push bp
+    mov  bp, sp
+    pushf                           ; Capture DOS return flags (including CF)
+    pop  WORD PTR ss:[bp+2]         ; Overwrite the leftover FLAGS word
+    pop  bp
+    dec  cs:[bios_lock]             ; Decrement lock BEFORE restoring flags
+    popf                            ; Restore exact DOS return flags
+    retf                            ; Return via RETF (leaving caller's FLAGS on stack)
+func_name ENDP
+ENDM
+
+DEFINE_ABS_DISK_WRAPPER isr_int25, old_int25
+DEFINE_ABS_DISK_WRAPPER isr_int26, old_int26
+
+;-----------------------------------------------------------------------------
+; isr_int27 - Legacy TSR trap
+;-----------------------------------------------------------------------------
+isr_int27 PROC FAR
+    push ds
+    mov  ds, cs:[dgroup_seg]
+    call unhook_hardware
+    pop  ds
+    jmp  DWORD PTR cs:[old_int27]
+isr_int27 ENDP
+
+;-----------------------------------------------------------------------------
+; isr_int2a - DOS critical section / network wrapper
+;-----------------------------------------------------------------------------
+isr_int2a PROC FAR
+    cmp  ah, 80h                    ; Begin DOS Critical Section?
+    jne  chk_end_crit
+    inc  cs:[bios_lock]
+    jmp  SHORT chain_int2a
+chk_end_crit:
+    cmp  ah, 81h                    ; End DOS Critical Section?
+    je   do_end_crit
+    cmp  ah, 82h                    ; End All DOS Critical Sections?
+    jne  chain_int2a
+do_end_crit:
+    cmp  cs:[bios_lock], 0
+    je   chain_int2a
+    dec  cs:[bios_lock]
+chain_int2a:
+    inc  cs:[bios_lock]
+    pushf
+    call DWORD PTR cs:[old_int2a]
     pushf
     dec  cs:[bios_lock]
     popf
     retf 2
-isr_int16 ENDP
+isr_int2a ENDP
+
+;-----------------------------------------------------------------------------
+; Helper macro to save & hook a vector via DOS INT 21h (AH=35h / AH=25h)
+;-----------------------------------------------------------------------------
+SAVE_AND_HOOK MACRO vec_num, old_slot, new_isr
+    mov  ax, (3500h OR vec_num)
+    int  21h
+    mov  WORD PTR cs:[old_slot], bx
+    mov  WORD PTR cs:[old_slot+2], es
+    push ds
+    push cs
+    pop  ds
+    mov  dx, OFFSET new_isr
+    mov  ax, (2500h OR vec_num)
+    int  21h
+    pop  ds
+ENDM
+
+;-----------------------------------------------------------------------------
+; Helper macro to restore a vector via cs:[old_int21] (AH=25h)
+;-----------------------------------------------------------------------------
+RESTORE_VEC MACRO vec_num, old_slot
+    LOCAL skip_restore
+    mov  ax, WORD PTR cs:[old_slot]
+    or   ax, WORD PTR cs:[old_slot+2]
+    jz   skip_restore
+    lds  dx, cs:[old_slot]
+    mov  ax, (2500h OR vec_num)
+    pushf
+    call DWORD PTR cs:[old_int21]
+skip_restore:
+ENDM
+
+;-----------------------------------------------------------------------------
+; unhook_hardware - Idempotent PIT & vector restoration via old_int21 (AH=25h)
+; Expects: DS = DGROUP. Preserves AX, BX, DX, DS, ES.
+;-----------------------------------------------------------------------------
+unhook_hardware PROC NEAR
+    push ax
+    push bx
+    push dx
+    push ds
+    push es
+
+    pushf
+    cli
+    cmp  threads_active, 0
+    jne  do_unhook_now
+    popf
+    jmp  unhook_exit
+
+do_unhook_now:
+    mov  threads_active, 0
+
+    ; 1. Restore standard 18.2 Hz PIT divisor (0000h)
+    mov  al, 36h
+    out  43h, al
+    xor  al, al
+    out  40h, al
+    out  40h, al
+
+    ; 2. Restore main thread's STKHQQ watermark
+    mov  bx, OFFSET tcb_table
+    mov  ax, [bx].TCB.stk_limit
+    mov  STKHQQ, ax
+
+    ; 3. Clear ErrorMode (SDA+00h) so AH=25h calls via old_int21 cleanly
+    mov  es, sda_seg
+    mov  bx, sda_off
+    mov  BYTE PTR es:[bx], 0
+
+    ; 4. Restore all hooked vectors via old_int21 (AH=25h)
+    RESTORE_VEC 08h, old_int08
+    RESTORE_VEC 21h, old_int21
+    RESTORE_VEC 10h, old_int10
+    RESTORE_VEC 13h, old_int13
+    RESTORE_VEC 15h, old_int15
+    RESTORE_VEC 16h, old_int16
+    RESTORE_VEC 17h, old_int17
+    RESTORE_VEC 1Bh, old_int1b
+    RESTORE_VEC 20h, old_int20
+    RESTORE_VEC 23h, old_int23
+    RESTORE_VEC 24h, old_int24
+    RESTORE_VEC 25h, old_int25
+    RESTORE_VEC 26h, old_int26
+    RESTORE_VEC 27h, old_int27
+    RESTORE_VEC 29h, old_int29
+    RESTORE_VEC 2Ah, old_int2a
+    RESTORE_VEC 2Eh, old_int2e
+    RESTORE_VEC 2Fh, old_int2f
+    RESTORE_VEC 33h, old_int33
+    RESTORE_VEC 67h, old_int67
+
+    popf
+unhook_exit:
+    pop  es
+    pop  ds
+    pop  dx
+    pop  bx
+    pop  ax
+    ret
+unhook_hardware ENDP
 
 ;=============================================================================
 ; PUBLIC C-CALLABLE API FUNCTIONS (compatible with small/medium/compact/large memory models)
@@ -786,7 +1052,26 @@ thread_init PROC PUBLIC USES si di ds, pit_shift: BYTE, main_prio: BYTE
     mov  ds, ax
     mov  cs:[dgroup_seg], ax
 
-    ; 1. Discover DOS Swappable Data Area via INT 21h AX=5D06h
+    ; 1. Register thread_abort with C runtime atexit() once
+    cmp  atexit_regd, 0
+    jne  skip_atexit_reg
+    mov  atexit_regd, 1
+    IF @CodeSize
+        mov  ax, SEG thread_abort
+        push ax
+        mov  ax, OFFSET thread_abort
+        push ax
+        call atexit
+        add  sp, 4
+    ELSE
+        mov  ax, OFFSET thread_abort
+        push ax
+        call atexit
+        add  sp, 2
+    ENDIF
+
+skip_atexit_reg:
+    ; 2. Discover DOS Swappable Data Area via INT 21h AX=5D06h
     push ds
     mov  ax, 5D06h
     int  21h                        ; Returns DS:SI = SDA pointer
@@ -795,7 +1080,6 @@ thread_init PROC PUBLIC USES si di ds, pit_shift: BYTE, main_prio: BYTE
     mov  sda_seg, ax
     mov  sda_off, si
 
-    ; Default fallback IOStack offset (SDA + 438h + 180h - 180h = SDA + 458h)
     add  si, 0458h
     mov  iostack_off, si
 
@@ -814,76 +1098,58 @@ thread_init PROC PUBLIC USES si di ds, pit_shift: BYTE, main_prio: BYTE
     and  al, 07h
     mov  [bx].TCB.tcb_prio, al
     mov  [bx].TCB.tcb_base_prio, al
-    mov  ax, STKHQQ                 ; Capture MSC 7.00 main stack lower bound
+    mov  ax, STKHQQ
     mov  [bx].TCB.stk_limit, ax
 
     mov  current_tid, 0
     mov  current_tcb, OFFSET tcb_table
     mov  active_mask, 01h
     mov  join_all_mask, 00h
+    mov  break_flag, 0
+    mov  break_count, 0
+    mov  crit_err_code, 0
 
     mov  di, OFFSET join_wait_mask
     mov  cx, (MAX_THREADS / 2)
     xor  ax, ax
     rep  stosw
 
-    ; 3. Save original interrupt vectors
-    mov  ax, 3508h
-    int  21h
-    mov  WORD PTR cs:[old_int08], bx
-    mov  WORD PTR cs:[old_int08+2], es
+    ; 4. Save & hook BIOS/System vectors and calibrate IOStack offset
+    SAVE_AND_HOOK 10h, old_int10, isr_int10
+    SAVE_AND_HOOK 13h, old_int13, isr_int13
+    SAVE_AND_HOOK 15h, old_int15, isr_int15
+    SAVE_AND_HOOK 16h, old_int16, isr_int16
+    SAVE_AND_HOOK 17h, old_int17, isr_int17
+    SAVE_AND_HOOK 1Bh, old_int1b, isr_int1b
+    SAVE_AND_HOOK 20h, old_int20, isr_int20
+    SAVE_AND_HOOK 23h, old_int23, isr_int23
+    SAVE_AND_HOOK 24h, old_int24, isr_int24
+    SAVE_AND_HOOK 25h, old_int25, isr_int25
+    SAVE_AND_HOOK 26h, old_int26, isr_int26
+    SAVE_AND_HOOK 27h, old_int27, isr_int27
+    SAVE_AND_HOOK 29h, old_int29, isr_int29
+    SAVE_AND_HOOK 2Ah, old_int2a, isr_int2a
+    SAVE_AND_HOOK 2Eh, old_int2e, isr_int2e
+    SAVE_AND_HOOK 2Fh, old_int2f, isr_int2f
 
-    mov  ax, 3510h
+    ; Only hook INT 33h (Mouse) if a mouse driver vector is actually installed
+    mov  ax, 3533h
     int  21h
-    mov  WORD PTR cs:[old_int10], bx
-    mov  WORD PTR cs:[old_int10+2], es
+    mov  ax, es
+    or   ax, bx
+    jz   skip_hook_33
+    SAVE_AND_HOOK 33h, old_int33, isr_int33
 
-    mov  ax, 3513h
+skip_hook_33:
+    ; Only hook INT 67h (EMS) if an EMS driver vector is actually installed
+    mov  ax, 3567h
     int  21h
-    mov  WORD PTR cs:[old_int13], bx
-    mov  WORD PTR cs:[old_int13+2], es
+    mov  ax, es
+    or   ax, bx
+    jz   skip_hook_67
+    SAVE_AND_HOOK 67h, old_int67, isr_int67
 
-    mov  ax, 3515h
-    int  21h
-    mov  WORD PTR cs:[old_int15], bx
-    mov  WORD PTR cs:[old_int15+2], es
-
-    mov  ax, 3516h
-    int  21h
-    mov  WORD PTR cs:[old_int16], bx
-    mov  WORD PTR cs:[old_int16+2], es
-
-    mov  ax, 3517h
-    int  21h
-    mov  WORD PTR cs:[old_int17], bx
-    mov  WORD PTR cs:[old_int17+2], es
-
-    mov  ax, 3521h
-    int  21h
-    mov  WORD PTR cs:[old_int21], bx
-    mov  WORD PTR cs:[old_int21+2], es
-
-    ; 4. Install BIOS wrappers and calibrate IOStack offset via AH=0Bh
-    push ds
-    push cs
-    pop  ds
-    mov  dx, OFFSET isr_int10
-    mov  ax, 2510h
-    int  21h
-    mov  dx, OFFSET isr_int13
-    mov  ax, 2513h
-    int  21h
-    mov  dx, OFFSET isr_int15
-    mov  ax, 2515h
-    int  21h
-    mov  dx, OFFSET isr_int16
-    mov  ax, 2516h
-    int  21h
-    mov  dx, OFFSET isr_int17
-    mov  ax, 2517h
-    int  21h
-    pop  ds
-
+skip_hook_67:
     mov  cs:[calib_iostack], 1
     mov  ah, 0Bh                    ; Triggers INT 16h on DOS IOStack
     int  21h
@@ -898,20 +1164,34 @@ thread_init PROC PUBLIC USES si di ds, pit_shift: BYTE, main_prio: BYTE
     mov  pit_sub_reload, al
     mov  pit_sub_count, al
 
+    ; Save INT 08h & INT 21h before entering CLI
+    mov  ax, 3508h
+    int  21h
+    mov  WORD PTR cs:[old_int08], bx
+    mov  WORD PTR cs:[old_int08+2], es
+
+    mov  ax, 3521h
+    int  21h
+    mov  WORD PTR cs:[old_int21], bx
+    mov  WORD PTR cs:[old_int21+2], es
+
     cli
+    mov  threads_active, 1
     push ds
     push cs
     pop  ds
     mov  dx, OFFSET isr_int21
     mov  ax, 2521h
-    int  21h
+    pushf
+    call DWORD PTR cs:[old_int21]
     mov  dx, OFFSET isr_timer
     mov  ax, 2508h
-    int  21h
+    pushf
+    call DWORD PTR cs:[old_int21]
     pop  ds
 
     ; Reprogram PIT channel 0 divisor = (65536 SHR pit_shift)
-    mov  al, 36h                    ; Channel 0, LSB+MSB, mode 3
+    mov  al, 36h
     out  43h, al
     xor  ax, ax
     or   cl, cl
@@ -925,9 +1205,20 @@ set_pit_div:
     out  40h, al
     sti
 
-    xor  ax, ax                     ; Return MT_ERR_NONE (0)
+    xor  ax, ax
     ret
 thread_init ENDP
+
+;-----------------------------------------------------------------------------
+; void MT_API thread_abort(void)
+; Idempotent emergency/atexit shutdown: unhooks PIT and all interrupt vectors.
+;-----------------------------------------------------------------------------
+thread_abort PROC PUBLIC USES ds
+    mov  ax, @data
+    mov  ds, ax
+    call unhook_hardware
+    ret
+thread_abort ENDP
 
 ;-----------------------------------------------------------------------------
 ; void MT_API thread_shutdown(void)
@@ -935,50 +1226,34 @@ thread_init ENDP
 thread_shutdown PROC PUBLIC USES si di ds
     mov  ax, @data
     mov  ds, ax
-
-    cli
-    ; Restore standard 18.2 Hz PIT divisor (0000h)
-    mov  al, 36h
-    out  43h, al
-    xor  al, al
-    out  40h, al
-    out  40h, al
-
-    ; Restore original interrupt vectors
-    push ds
-    lds  dx, cs:[old_int08]
-    mov  ax, 2508h
-    int  21h
-    lds  dx, cs:[old_int21]
-    mov  ax, 2521h
-    int  21h
-    lds  dx, cs:[old_int10]
-    mov  ax, 2510h
-    int  21h
-    lds  dx, cs:[old_int13]
-    mov  ax, 2513h
-    int  21h
-    lds  dx, cs:[old_int15]
-    mov  ax, 2515h
-    int  21h
-    lds  dx, cs:[old_int16]
-    mov  ax, 2516h
-    int  21h
-    lds  dx, cs:[old_int17]
-    mov  ax, 2517h
-    int  21h
-    pop  ds
-
-    ; Restore main thread's STKHQQ watermark
-    mov  bx, OFFSET tcb_table
-    mov  ax, [bx].TCB.stk_limit
-    mov  STKHQQ, ax
-    sti
-
-    ; Reclaim any heap-allocated stacks
+    call unhook_hardware
     call reap_zombie_stacks
     ret
 thread_shutdown ENDP
+
+;-----------------------------------------------------------------------------
+; int MT_API thread_break_requested(void)
+;-----------------------------------------------------------------------------
+thread_break_requested PROC PUBLIC
+    push ds
+    mov  ds, cs:[dgroup_seg]
+    xor  ax, ax
+    mov  al, break_flag
+    pop  ds
+    ret
+thread_break_requested ENDP
+
+;-----------------------------------------------------------------------------
+; unsigned int MT_API thread_get_critical_error(void)
+;-----------------------------------------------------------------------------
+thread_get_critical_error PROC PUBLIC
+    push ds
+    mov  ds, cs:[dgroup_seg]
+    xor  ax, ax
+    xchg ax, crit_err_code
+    pop  ds
+    ret
+thread_get_critical_error ENDP
 
 ;-----------------------------------------------------------------------------
 ; reap_zombie_stacks - Lazily free() auto-allocated stacks of exited threads

@@ -2,10 +2,10 @@
  * mthread.h - Preemptive Multithreading Library for MS-DOS (8086 / MASM 6.11)
  * Compatible with Microsoft C/C++ 7.00, Borland C++ 3.1, and OpenWatcom
  *===========================================================================*/
-#ifndef MTHREAD_H
+#if !defined MTHREAD_H
 #define MTHREAD_H
 
-#ifdef __cplusplus
+#if defined __cplusplus
 extern "C" {
 #endif
 
@@ -47,8 +47,11 @@ typedef unsigned char tid_t;
 typedef void ( MT_API* thread_func_t )( void* arg );
 
 /* Core Lifecycle API */
-int   MT_API thread_init( unsigned char pit_shift, unsigned char main_prio );
-void  MT_API thread_shutdown( void );
+int           MT_API thread_init( unsigned char pit_shift, unsigned char main_prio );
+void          MT_API thread_shutdown( void );
+void          MT_API thread_abort( void );
+int           MT_API thread_break_requested( void );
+unsigned int  MT_API thread_get_critical_error( void );
 
 /* Pass stack_ptr = NULL to auto-allocate via malloc();
  * Pass stack_size = 0 to use default stack size (1024 bytes).
@@ -118,7 +121,7 @@ void MT_API cond_wait( mt_cond_t* cv, mt_mutex_t* mtx );
 void MT_API cond_signal( mt_cond_t* cv );
 void MT_API cond_broadcast( mt_cond_t* cv );
 
-#ifdef __cplusplus
+#if defined __cplusplus
 }
 #endif
 
