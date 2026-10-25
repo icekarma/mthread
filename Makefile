@@ -50,9 +50,9 @@ WAT_CPU_FLAGS = -0
 !IF "$(COMPILER)" == "MSC"
 CC       = cl
 AS       = ml
-CFLAGS   = /c /A$(MCODE_UPPER) $(MSC_CPU_FLAGS) /W3 /Ox /Zi
-AFLAGS   = /c /W3 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) /Zi
-LINK_CMD = $(CC) /A$(MCODE_UPPER) $(MSC_CPU_FLAGS)
+CFLAGS   = /c /A$(MCODE_UPPER) $(MSC_CPU_FLAGS) /W3 /Ox /Zi /nologo
+AFLAGS   = /c /W3 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) /Zi /nologo
+LINK_CMD = $(CC) /A$(MCODE_UPPER) $(MSC_CPU_FLAGS) /nologo
 LIB_CMD  = lib /NOLOGO
 !ELSEIF "$(COMPILER)" == "BCC"
 CC       = bcc

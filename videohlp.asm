@@ -14,6 +14,11 @@ ELSE
     .8086
 ENDIF
 
+.DATA
+
+EXTERN row_offset: WORD
+EXTERN col_offset: WORD
+
 .CODE
 
 ;-----------------------------------------------------------------------------
@@ -22,14 +27,16 @@ ENDIF
 ;-----------------------------------------------------------------------------
 video_gotoxy PROC PUBLIC, row: BYTE, col: BYTE
     push es
-    mov  ax, 0040h
+    xor  ax, ax
     mov  es, ax
-    mov  bh, es:[0062h] ; Load current active display page (0..7)
+    mov  bh, es:[0462h]            ; Load current active display page (0..7)
     pop  es
 
-    mov  ah, 02h        ; BIOS Set Cursor Position
-    mov  dh, row        ; Load 0-based row
-    mov  dl, col        ; Load 0-based column
+    mov  ah, 02h                   ; BIOS Set Cursor Position
+    mov  dh, row                   ; Load 0-based row
+    add  dh, byte ptr [row_offset] ; Adjust for row offset
+    mov  dl, col                   ; Load 0-based column
+    add  dl, byte ptr [col_offset] ; Adjust for column offset
     int  10h
     ret
 video_gotoxy ENDP

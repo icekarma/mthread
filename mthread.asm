@@ -17,13 +17,14 @@ ENDIF
 INCLUDE mthread.inc
 
 ; External MSC 7.00 / CRT symbols
-EXTERNDEF C STKHQQ:WORD             ; MSC 7.00 stack-check lower bound in DGROUP
-EXTERNDEF C malloc:PROC
-EXTERNDEF C free:PROC
+EXTERNDEF C STKHQQ: WORD            ; MSC 7.00 stack-check lower bound in DGROUP
+EXTERNDEF C malloc: PROC
+EXTERNDEF C free:   PROC
 
 ;=============================================================================
 ; DATA SEGMENT (DGROUP)
 ;=============================================================================
+
 .DATA
 
 ALIGN 2
@@ -35,12 +36,12 @@ active_mask     DB  01h                 ; Bitmask of in-use TCB slots
 join_all_mask   DB  00h                 ; Bitmask of threads in thread_join_all()
 join_wait_mask  DB  MAX_THREADS DUP (0) ; Per-TID bitmask of thread_join() waiters
 
-; PIT & Timer Chaining State
+; PIT & timer chaining state
 pit_shift_val   DB  0                   ; 0..3 (1x, 2x, 4x, 8x)
 pit_sub_reload  DB  1                   ; (1 SHL pit_shift_val)
 pit_sub_count   DB  1                   ; Countdown to BIOS INT 08h chain
 
-; DOS SDA & Stack Ownership Tracking
+; DOS SDA & stack ownership tracking
 sda_off         DW  0                   ; Offset of DOS SDA (from AX=5D06h)
 sda_seg         DW  0                   ; Segment of DOS SDA
 iostack_off     DW  0                   ; Offset of 384-byte IOStack inside SDA
@@ -53,7 +54,7 @@ io_swap_owner   DB  NO_THREAD           ; Thread whose IOStack is in io_swap_buf
 ALIGN 2
 io_swap_buf     DB  IOSWAP_BUF_SIZE DUP (0)
 
-; Dedicated 512-byte Scheduler & ISR Stack (keeps user thread stacks tiny)
+; Dedicated 512-byte scheduler & ISR stack (keeps user thread stacks tiny)
 ALIGN 2
 isr_stack_base  DB  ISR_STACK_SIZE DUP (0)
 isr_stack_top   LABEL WORD
@@ -63,6 +64,7 @@ tid_bit_lut     DB  01h, 02h, 04h, 08h, 10h, 20h, 40h, 80h
 ;=============================================================================
 ; CODE SEGMENT
 ;=============================================================================
+
 .CODE
 
 ; CS-reachable variables for interrupt entry stubs before DS is loaded
@@ -82,7 +84,7 @@ old_int17       DD  0                   ; Saved BIOS Printer vector
 old_int21       DD  0                   ; Saved DOS INT 21h vector
 
 ;-----------------------------------------------------------------------------
-; isr_timer (INT 08h Hardware Timer Handler)
+; isr_timer (INT 08h hardware timer handler)
 ;-----------------------------------------------------------------------------
 isr_timer PROC FAR
     ; 1. Did this interrupt wake us from the built-in HLT idle loop?
@@ -167,7 +169,7 @@ sleep_next:
     cmp  cs:[bios_lock], 0
     jne  resume_current_thread
 
-    ; Fall through into the Priority-Based Round-Robin Scheduler!
+    ; Fall through into the priority-based round-robin scheduler!
     jmp  SHORT schedule_next_thread
 
 chain_only:
@@ -175,7 +177,7 @@ chain_only:
 isr_timer ENDP
 
 ;-----------------------------------------------------------------------------
-; schedule_next_thread - Priority-Based Round-Robin Dispatcher
+; schedule_next_thread - Priority-based round-robin dispatcher
 ; Expects: DS = SS = DGROUP, SP = OFFSET isr_stack_top, IF = 0
 ;-----------------------------------------------------------------------------
 schedule_next_thread LABEL NEAR
@@ -186,7 +188,7 @@ schedule_next_thread LABEL NEAR
 
     mov  dl, NO_THREAD              ; DL = best_tid found so far
     mov  dh, -1                     ; DH = best_prio found so far (-1 = none)
-    mov  ch, MAX_THREADS           ; CH = loop counter (8 threads)
+    mov  ch, MAX_THREADS            ; CH = loop counter (8 threads)
 
 sched_loop:
     ; Compute BX = OFFSET tcb_table + (AL * 64)
@@ -259,7 +261,7 @@ resume_current_thread:
     iret
 
 ;-----------------------------------------------------------------------------
-; Built-in HLT Idle Loop (runs on isr_stack when no thread is STATE_READY)
+; Built-in HLT idle loop (runs on isr_stack when no thread is STATE_READY)
 ;-----------------------------------------------------------------------------
 enter_idle_hlt:
     ; If outgoing thread was in DOS, snapshot its 24-byte SDA header first
@@ -272,7 +274,7 @@ idle_hlt_spin:
     jmp  SHORT idle_hlt_spin
 
 ;-----------------------------------------------------------------------------
-; swap_sda_headers - 24-Byte SDA Header Micro-Swap & 400-Byte IOStack Exchange
+; swap_sda_headers - 24-byte SDA header micro-swap & 400-byte IOStack exchange
 ; Entry: DS = DGROUP, BL = outgoing TID (or NO_THREAD), DL = incoming TID
 ;        SI = incoming TCB pointer (preserved)
 ;-----------------------------------------------------------------------------
@@ -395,7 +397,7 @@ xchg_iostk_loop:
 exchange_iostack_slice ENDP
 
 ;-----------------------------------------------------------------------------
-; soft_context_switch - Voluntary/Gatekeeper Context Save & Reschedule
+; soft_context_switch - Voluntary/gatekeeper context save & reschedule
 ; Invoked via: PUSHF / CLI / PUSH CS / CALL NEAR PTR soft_context_switch
 ; Expects: DS = DGROUP, target tcb_state already set in current_tcb
 ;-----------------------------------------------------------------------------
@@ -431,7 +433,7 @@ soft_context_switch PROC NEAR
 soft_context_switch ENDP
 
 ;-----------------------------------------------------------------------------
-; isr_int21 - Hybrid MS-DOS INT 21h Gatekeeper & Stack-Tier Manager
+; isr_int21 - Hybrid MS-DOS INT 21h gatekeeper & stack-tier manager
 ;-----------------------------------------------------------------------------
 isr_int21 PROC FAR
     ; 1. Fast-path Tier 0 (Stackless calls) & Program Termination (AH=4Ch/00h)
@@ -675,7 +677,7 @@ dos_pass_through:
 isr_int21 ENDP
 
 ;-----------------------------------------------------------------------------
-; boost_and_block_on_dos - Priority Inheritance & Wait Helper for INT 21h
+; boost_and_block_on_dos - Priority inheritance & wait helper for INT 21h
 ; Entry: DS = DGROUP, BL = owner TID, DL = wait state (STATE_WAIT_*)
 ;        Stack has [SP+2]=ES, [SP+4]=BX, [SP+6]=AX, [SP+8]=DS
 ;-----------------------------------------------------------------------------
@@ -773,13 +775,13 @@ normal_int16:
 isr_int16 ENDP
 
 ;=============================================================================
-; PUBLIC C-CALLABLE API FUNCTIONS (Compatible with Small/Medium/Compact/Large)
+; PUBLIC C-CALLABLE API FUNCTIONS (compatible with small/medium/compact/large memory models)
 ;=============================================================================
 
 ;-----------------------------------------------------------------------------
 ; int MT_API thread_init(unsigned char pit_shift, unsigned char main_prio)
 ;-----------------------------------------------------------------------------
-thread_init PROC PUBLIC USES si di ds, pit_shift:BYTE, main_prio:BYTE
+thread_init PROC PUBLIC USES si di ds, pit_shift: BYTE, main_prio: BYTE
     mov  ax, @data
     mov  ds, ax
     mov  cs:[dgroup_seg], ax
@@ -797,7 +799,7 @@ thread_init PROC PUBLIC USES si di ds, pit_shift:BYTE, main_prio:BYTE
     add  si, 0458h
     mov  iostack_off, si
 
-    ; 2. Clear TCB table and initialize Thread 0 (main C thread)
+    ; 3. Clear TCB table and initialize Thread 0 (main C thread)
     push ds
     pop  es
     mov  di, OFFSET tcb_table
@@ -887,7 +889,7 @@ thread_init PROC PUBLIC USES si di ds, pit_shift:BYTE, main_prio:BYTE
     int  21h
     mov  cs:[calib_iostack], 0
 
-    ; 5. Configure 8253 PIT Channel 0 rate and install INT 21h & INT 08h hooks
+    ; 5. Configure 8253 PIT channel 0 rate and install INT 21h & INT 08h hooks
     mov  cl, pit_shift
     and  cl, 03h
     mov  pit_shift_val, cl
@@ -908,8 +910,8 @@ thread_init PROC PUBLIC USES si di ds, pit_shift:BYTE, main_prio:BYTE
     int  21h
     pop  ds
 
-    ; Reprogram PIT Channel 0 divisor = (65536 SHR pit_shift)
-    mov  al, 36h                    ; Channel 0, LSB+MSB, Mode 3
+    ; Reprogram PIT channel 0 divisor = (65536 SHR pit_shift)
+    mov  al, 36h                    ; Channel 0, LSB+MSB, mode 3
     out  43h, al
     xor  ax, ax
     or   cl, cl
@@ -984,6 +986,7 @@ thread_shutdown ENDP
 reap_zombie_stacks PROC NEAR
     mov  si, OFFSET tcb_table
     mov  di, MAX_THREADS
+
 reap_loop:
     pushf
     cli
@@ -1196,7 +1199,7 @@ thread_yield ENDP
 ;-----------------------------------------------------------------------------
 ; void MT_API thread_sleep(unsigned int ticks)
 ;-----------------------------------------------------------------------------
-thread_sleep PROC PUBLIC, ticks:WORD
+thread_sleep PROC PUBLIC, ticks: WORD
     mov  ax, ticks
     or   ax, ax
     jz   sleep_yield_only
@@ -1274,7 +1277,7 @@ thread_exit ENDP
 ; int MT_API thread_join(tid_t tid)
 ; Blocks until thread `tid` exits and reclaims its stack if auto-allocated.
 ;-----------------------------------------------------------------------------
-thread_join PROC PUBLIC USES si di ds, tid:BYTE
+thread_join PROC PUBLIC USES si di ds, tid: BYTE
     mov  dx, ds                     ; Save caller's DS in DX
     mov  ds, cs:[dgroup_seg]
 
@@ -1356,7 +1359,7 @@ thread_self ENDP
 ;-----------------------------------------------------------------------------
 ; unsigned char MT_API thread_get_priority(tid_t tid)
 ;-----------------------------------------------------------------------------
-thread_get_priority PROC PUBLIC, tid:BYTE
+thread_get_priority PROC PUBLIC, tid: BYTE
     push ds
     mov  ds, cs:[dgroup_seg]
 
@@ -1385,7 +1388,7 @@ thread_get_priority ENDP
 ;-----------------------------------------------------------------------------
 ; int MT_API thread_set_priority(tid_t tid, unsigned char new_prio)
 ;-----------------------------------------------------------------------------
-thread_set_priority PROC PUBLIC, tid:BYTE, new_prio:BYTE
+thread_set_priority PROC PUBLIC, tid: BYTE, new_prio: BYTE
     push ds
     mov  ds, cs:[dgroup_seg]
 
@@ -1545,7 +1548,7 @@ preempt_if_higher ENDP
 ;=============================================================================
 
 thread_event_init LABEL NEAR
-event_init PROC PUBLIC USES di, ev:DATA_PTR, manual_reset:BYTE, initial_state:BYTE
+event_init PROC PUBLIC USES di, ev: DATA_PTR, manual_reset: BYTE, initial_state: BYTE
     LOAD_DATA_PTR di, ev
     xor  al, al
     cmp  manual_reset, 0
@@ -1565,7 +1568,7 @@ ev_set_sig:
     ret
 event_init ENDP
 
-event_set PROC PUBLIC USES si di ds, ev:DATA_PTR
+event_set PROC PUBLIC USES si di ds, ev: DATA_PTR
     mov  dx, ds                     ; Save caller's DS in DX
     mov  ds, cs:[dgroup_seg]
     LOAD_DATA_PTR di, ev
@@ -1604,13 +1607,13 @@ ev_no_waiters:
     ret
 event_set ENDP
 
-event_reset PROC PUBLIC USES di, ev:DATA_PTR
+event_reset PROC PUBLIC USES di, ev: DATA_PTR
     LOAD_DATA_PTR di, ev
     mov  es:[di].MT_EVENT.ev_signaled, 0
     ret
 event_reset ENDP
 
-event_pulse PROC PUBLIC USES si di ds, ev:DATA_PTR
+event_pulse PROC PUBLIC USES si di ds, ev: DATA_PTR
     mov  dx, ds
     mov  ds, cs:[dgroup_seg]
     LOAD_DATA_PTR di, ev
@@ -1643,7 +1646,7 @@ ev_pulse_done:
     ret
 event_pulse ENDP
 
-event_wait PROC PUBLIC USES di ds, ev:DATA_PTR
+event_wait PROC PUBLIC USES di ds, ev: DATA_PTR
     mov  dx, ds                     ; Save caller's DS in DX
     mov  ds, cs:[dgroup_seg]
     LOAD_DATA_PTR di, ev
@@ -1677,7 +1680,7 @@ event_wait ENDP
 ; 2. RECURSIVE MUTEX API WITH PRIORITY INHERITANCE (mutex_init/lock/trylock/unlock)
 ;=============================================================================
 
-mutex_init PROC PUBLIC USES di, mtx:DATA_PTR
+mutex_init PROC PUBLIC USES di, mtx: DATA_PTR
     LOAD_DATA_PTR di, mtx
     mov  es:[di].MT_MUTEX.mtx_owner, NO_THREAD
     mov  es:[di].MT_MUTEX.mtx_count, 0
@@ -1686,7 +1689,7 @@ mutex_init PROC PUBLIC USES di, mtx:DATA_PTR
     ret
 mutex_init ENDP
 
-mutex_lock PROC PUBLIC USES si di ds, mtx:DATA_PTR
+mutex_lock PROC PUBLIC USES si di ds, mtx: DATA_PTR
     mov  dx, ds
     mov  ds, cs:[dgroup_seg]
     LOAD_DATA_PTR di, mtx
@@ -1735,7 +1738,7 @@ mtx_recursive_inc:
     ret
 mutex_lock ENDP
 
-mutex_trylock PROC PUBLIC USES di ds, mtx:DATA_PTR
+mutex_trylock PROC PUBLIC USES di ds, mtx: DATA_PTR
     mov  ds, cs:[dgroup_seg]
     LOAD_DATA_PTR di, mtx
 
@@ -1767,7 +1770,7 @@ mtx_try_rec:
     ret
 mutex_trylock ENDP
 
-mutex_unlock PROC PUBLIC USES si di ds, mtx:DATA_PTR
+mutex_unlock PROC PUBLIC USES si di ds, mtx: DATA_PTR
     mov  cx, ds                     ; Save caller's DS in CX
     mov  ds, cs:[dgroup_seg]
     LOAD_DATA_PTR di, mtx
@@ -1813,7 +1816,7 @@ mutex_unlock ENDP
 ; 3. COUNTING SEMAPHORE API (sem_init, sem_wait, sem_trywait, sem_post)
 ;=============================================================================
 
-sem_init PROC PUBLIC USES di, sem:DATA_PTR, initial_count:WORD
+sem_init PROC PUBLIC USES di, sem: DATA_PTR, initial_count: WORD
     LOAD_DATA_PTR di, sem
     mov  ax, initial_count
     mov  es:[di].MT_SEM.sem_count, ax
@@ -1822,7 +1825,7 @@ sem_init PROC PUBLIC USES di, sem:DATA_PTR, initial_count:WORD
     ret
 sem_init ENDP
 
-sem_wait PROC PUBLIC USES di ds, sem:DATA_PTR
+sem_wait PROC PUBLIC USES di ds, sem: DATA_PTR
     mov  dx, ds
     mov  ds, cs:[dgroup_seg]
     LOAD_DATA_PTR di, sem
@@ -1847,7 +1850,7 @@ sem_must_block:
     ret
 sem_wait ENDP
 
-sem_trywait PROC PUBLIC USES di, sem:DATA_PTR
+sem_trywait PROC PUBLIC USES di, sem: DATA_PTR
     LOAD_DATA_PTR di, sem
     pushf
     cli
@@ -1863,7 +1866,7 @@ sem_try_fail:
     ret
 sem_trywait ENDP
 
-sem_post PROC PUBLIC USES si di ds, sem:DATA_PTR
+sem_post PROC PUBLIC USES si di ds, sem: DATA_PTR
     mov  cx, ds
     mov  ds, cs:[dgroup_seg]
     LOAD_DATA_PTR di, sem
@@ -1892,14 +1895,14 @@ sem_post ENDP
 ; 4. CONDITION VARIABLE API (cond_init, cond_wait, cond_signal, cond_broadcast)
 ;=============================================================================
 
-cond_init PROC PUBLIC USES di, cv:DATA_PTR
+cond_init PROC PUBLIC USES di, cv: DATA_PTR
     LOAD_DATA_PTR di, cv
     mov  es:[di].MT_COND.cv_wait_mask, 0
     mov  es:[di].MT_COND.cv_reserved, 0
     ret
 cond_init ENDP
 
-cond_wait PROC PUBLIC USES si di ds, cv:DATA_PTR, mtx:DATA_PTR
+cond_wait PROC PUBLIC USES si di ds, cv: DATA_PTR, mtx: DATA_PTR
     LOCAL saved_count:BYTE, caller_ds:WORD
 
     mov  ax, ds
@@ -1965,7 +1968,7 @@ cv_enter_sleep:
     ret
 cond_wait ENDP
 
-cond_signal PROC PUBLIC USES si di ds, cv:DATA_PTR
+cond_signal PROC PUBLIC USES si di ds, cv: DATA_PTR
     mov  cx, ds
     mov  ds, cs:[dgroup_seg]
     LOAD_DATA_PTR di, cv
@@ -1986,7 +1989,7 @@ cv_sig_done:
     ret
 cond_signal ENDP
 
-cond_broadcast PROC PUBLIC USES si di ds, cv:DATA_PTR
+cond_broadcast PROC PUBLIC USES si di ds, cv: DATA_PTR
     mov  cx, ds
     mov  ds, cs:[dgroup_seg]
     LOAD_DATA_PTR di, cv
