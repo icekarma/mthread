@@ -1,7 +1,7 @@
-#ifndef _VIDEO_H_
+#if !defined _VIDEO_H_
 #define _VIDEO_H_
 
-#ifdef __cplusplus
+#if defined __cplusplus
 extern "C" {
 #endif
 
@@ -10,15 +10,17 @@ extern "C" {
 #endif
 
 void MT_API video_init( void );
-void MT_API video_clear( void );
+
+void MT_API video_clear( unsigned char const attr );
 void MT_API video_putc( int const row, int const col, unsigned char const attr, unsigned char const c );
 void MT_API video_puts( int const row, int const col, unsigned char const attr, const char* s );
-void MT_API video_putu16( int const row, int const col, unsigned char const attr, unsigned int val );
-void MT_API video_putu32( int const row, int const col, unsigned char const attr, unsigned long val );
+void MT_API video_putu16( int const row, int const col, unsigned char const attr, unsigned int const val );
+void MT_API video_putu32( int const row, int const col, unsigned char const attr, unsigned long const val );
+void MT_API video_ruler( void );
 void MT_API video_gotoxy( unsigned char const row, unsigned char const col );
 
-#ifdef __cplusplus
+#if defined __cplusplus
 }
 #endif
 
-#endif // _VIDEO_H_
+#endif /* !defined _VIDEO_H_ */

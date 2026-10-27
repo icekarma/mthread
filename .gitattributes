@@ -1,1 +1,3 @@
 * text=auto eol=crlf
+Makefile text eol=crlf working-tree-encoding=CP437
+demo.c text eol=crlf working-tree-encoding=CP437

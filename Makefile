@@ -1,5 +1,5 @@
 #=============================================================================
-# Makefile - MS-DOS Preemptive Multithreading Library & Demos (NMAKE)
+# Makefile - MS-DOS Preemptive Multithreading Kernel & Demos (NMAKE)
 #
 # Usage Examples:
 #   nmake                                  (Defaults: MSC, SMALL, 8086)
@@ -50,9 +50,9 @@ WAT_CPU_FLAGS = -0
 !IF "$(COMPILER)" == "MSC"
 CC       = cl
 AS       = ml
-CFLAGS   = /c /A$(MCODE_UPPER) $(MSC_CPU_FLAGS) /W3 /Ox /Zi /nologo
+CFLAGS   = /c /A$(MCODE_UPPER) $(MSC_CPU_FLAGS) /Gy /Ox /W3 /Zi /nologo
 AFLAGS   = /c /W3 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) /Zi /nologo
-LINK_CMD = $(CC) /A$(MCODE_UPPER) $(MSC_CPU_FLAGS) /nologo
+LINK_CMD = $(CC) /A$(MCODE_UPPER) $(MSC_CPU_FLAGS) #/nologo
 LIB_CMD  = lib /NOLOGO
 !ELSEIF "$(COMPILER)" == "BCC"
 CC       = bcc
@@ -75,16 +75,23 @@ LIB_CMD  = wlib -q -b -n
 # --- 4. Build Targets ---
 TARGETS = demo.exe syncdemo.exe
 
-all: $(TARGETS)
+all: cls $(TARGETS)
+
+cls:
+	@cls
+	@echo Building preemptive multithreading kernel & demos
+	@echo Compiler:     $(COMPILER)
+	@echo Memory model: $(MODEL)
+	@echo Target CPU:   $(CPU)
 
 mthread.obj: mthread.asm mthread.inc mthread.h
 	$(AS) $(AFLAGS) mthread.asm
 
 videohlp.obj: videohlp.asm
-	$(AS) $(AFLAGS) videohlp.asm
+	$(AS) $(AFLAGS) /DOFFSET_DISPLAY videohlp.asm
 
 video.obj: video.c video.h
-	$(CC) $(CFLAGS) video.c
+	$(CC) $(CFLAGS) /DOFFSET_DISPLAY video.c
 
 vid.lib: video.obj videohlp.obj
 	-if exist vid.lib del vid.lib
@@ -101,7 +108,7 @@ demo.exe: demo.obj mthread.obj vid.lib
 	$(LINK_CMD) demo.obj mthread.obj vid.lib
 
 syncdemo.obj: syncdemo.c mthread.h video.h
-	$(CC) $(CFLAGS) syncdemo.c
+	$(CC) $(CFLAGS) /DRULER syncdemo.c
 
 syncdemo.exe: syncdemo.obj mthread.obj vid.lib
 	$(LINK_CMD) syncdemo.obj mthread.obj vid.lib

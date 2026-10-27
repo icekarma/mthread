@@ -1,5 +1,7 @@
-*.LIB
-*.OBJ
+*.COD
 *.EXE
+*.LIB
+*.MAP
+*.OBJ
 .vs/
 MTTEST.LOG

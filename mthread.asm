@@ -121,7 +121,7 @@ skip:
     cmp  current_tid, NO_THREAD
     je   from_idle_loop
 
-    ; 2. Save interrupted thread's 14 registers directly into its TCB
+    ; 2. Save interrupted thread''s 14 registers directly into its TCB
     mov  bx, current_tcb
     mov  [bx].TCB.reg_ax, ax
     mov  ax, cs:[scratch_bx]
@@ -260,7 +260,7 @@ resume_current_thread:
     mov  ax, [bx].TCB.stk_limit
     mov  STKHQQ, ax
 
-    ; Restore target thread's SS:SP and build IRET frame
+    ; Restore target thread''s SS:SP and build IRET frame
     mov  ss, [bx].TCB.reg_ss
     mov  sp, [bx].TCB.reg_sp
     push WORD PTR [bx].TCB.reg_flags
@@ -303,7 +303,7 @@ swap_sda_headers PROC NEAR
     push di
     push es
 
-    ; 1. Save outgoing thread's 24-byte SDA header if it is inside INT 21h
+    ; 1. Save outgoing thread''s 24-byte SDA header if it is inside INT 21h
     cmp  bl, NO_THREAD
     je   check_incoming_sda
 
@@ -326,7 +326,7 @@ swap_sda_headers PROC NEAR
     pop  ds
 
 check_incoming_sda:
-    ; 2. Restore incoming thread's 24-byte SDA header if it is inside INT 21h
+    ; 2. Restore incoming thread''s 24-byte SDA header if it is inside INT 21h
     cmp  dl, NO_THREAD
     je   swap_sda_done
 
@@ -515,7 +515,7 @@ isr_int1b PROC FAR
     mov  break_flag, 1
     inc  break_count
 
-    ; Clear BIOS Ctrl+Break flag at 0040:0071h so DOS doesn't echo ^C
+    ; Clear BIOS Ctrl+Break flag at 0040:0071h so DOS doesn''t echo ^C
     xor  ax, ax
     mov  ds, ax
     and  BYTE PTR ds:[0471h], 7Fh
@@ -559,7 +559,7 @@ isr_int21 PROC FAR
     cmp  ah, 64h
     je   dos_pass_through
 
-    ; Save caller's DS, AX, BX, ES on caller's user stack while classifying
+    ; Save caller''s DS, AX, BX, ES on caller''s user stack while classifying
     push ds
     push ax
     push bx
@@ -589,7 +589,7 @@ tier_disk_retry:
     cmp  al, current_tid
     je   dos_pop_and_pass           ; Recursive INT 21h from same thread
 
-    ; Collision on DiskStack: boost owner's priority & block current thread
+    ; Collision on DiskStack: boost owner''s priority & block current thread
     mov  bl, al
     mov  dl, STATE_WAIT_DISK
     call boost_and_block_on_dos
@@ -634,7 +634,7 @@ tier_io_stack:
     cmp  io_swap_owner, NO_THREAD
     jne  wait_for_io_buf
 
-    ; Snapshot owner's 24-byte SDA header + 400-byte IOStack slice into buffer
+    ; Snapshot owner''s 24-byte SDA header + 400-byte IOStack slice into buffer
     mov  bl, al
     xor  bh, bh
     SHL_IMM bx, 6
@@ -642,7 +642,7 @@ tier_io_stack:
     or   [bx].TCB.tcb_flags, TCB_FLG_SWAPPED_IO
     mov  io_swap_owner, al
 
-    ; Copy live 24-byte header into displaced owner's TCB.sda_hdr
+    ; Copy live 24-byte header into displaced owner''s TCB.sda_hdr
     push si
     push di
     push cx
@@ -678,7 +678,7 @@ mark_in_dos_and_call:
     mov  bx, current_tcb
     or   [bx].TCB.tcb_flags, TCB_FLG_IN_DOS
 
-    ; Restore caller's registers before invoking the real DOS INT 21h handler
+    ; Restore caller''s registers before invoking the real DOS INT 21h handler
     pop  es
     pop  bx
     pop  ax
@@ -721,12 +721,12 @@ chk_rel_io:
     cmp  io_stack_owner, al
     jne  finish_int21_exit
 
-    ; Did we displace another thread's IOStack into io_swap_buf?
+    ; Did we displace another thread''s IOStack into io_swap_buf?
     mov  ah, io_swap_owner
     cmp  ah, NO_THREAD
     je   clear_io_owner
 
-    ; Restore displaced thread's 400B IOStack slice & 24B SDA header
+    ; Restore displaced thread''s 400B IOStack slice & 24B SDA header
     push es
     call exchange_iostack_slice
     mov  bl, ah
@@ -758,14 +758,14 @@ wake_io_waiters:
     call restore_prio_and_wake
 
 finish_int21_exit:
-    ; Copy DOS return flags into caller's IRET frame on stack:
+    ; Copy DOS return flags into caller''s IRET frame on stack:
     ; Stack layout: [SP+0]=CX, [SP+2]=BX, [SP+4]=AX, [SP+6]=DS, [SP+8]=DOS_FLAGS,
     ;               [SP+10]=IP, [SP+12]=CS, [SP+14]=CALLER_FLAGS
     mov  bx, sp
     mov  ax, ss:[bx+8]              ; AX = flags returned by DOS
     and  ax, 0FD5h                  ; Mask status flags (CF,PF,AF,ZF,SF,OF,DF)
     and  WORD PTR ss:[bx+14], NOT 0FD5h
-    or   ss:[bx+14], ax             ; Merge into caller's IRET FLAGS word
+    or   ss:[bx+14], ax             ; Merge into caller''s IRET FLAGS word
 
     pop  cx
     pop  bx
@@ -804,11 +804,11 @@ boost_and_block_on_dos PROC NEAR
     mov  al, [si].TCB.tcb_prio
     cmp  al, [bx].TCB.tcb_prio
     jle  no_prio_boost
-    mov  [bx].TCB.tcb_prio, al      ; Boost owner to match waiter's priority
+    mov  [bx].TCB.tcb_prio, al      ; Boost owner to match waiter''s priority
 no_prio_boost:
     mov  [si].TCB.tcb_state, dl     ; Mark current thread waiting
 
-    ; Save caller's original DS into scratch_ds for soft_context_switch
+    ; Save caller''s original DS into scratch_ds for soft_context_switch
     push bp
     mov  bp, sp
     mov  ax, ss:[bp+10]             ; Original DS pushed at entry of isr_int21
@@ -879,7 +879,7 @@ isr_int24 PROC FAR
 isr_int24 ENDP
 
 ;-----------------------------------------------------------------------------
-; INT 25h & INT 26h wrappers (preserve DOS's left-on-stack FLAGS convention!)
+; INT 25h & INT 26h wrappers (preserve DOS''s left-on-stack FLAGS convention!)
 ;-----------------------------------------------------------------------------
 DEFINE_ABS_DISK_WRAPPER MACRO func_name, old_vec
 func_name PROC FAR
@@ -893,7 +893,7 @@ func_name PROC FAR
     pop  bp
     dec  cs:[bios_lock]             ; Decrement lock BEFORE restoring flags
     popf                            ; Restore exact DOS return flags
-    retf                            ; Return via RETF (leaving caller's FLAGS on stack)
+    retf                            ; Return via RETF (leaving caller''s FLAGS on stack)
 func_name ENDP
 ENDM
 
@@ -998,7 +998,7 @@ do_unhook_now:
     out  40h, al
     out  40h, al
 
-    ; 2. Restore main thread's STKHQQ watermark
+    ; 2. Restore main thread''s STKHQQ watermark
     mov  bx, OFFSET tcb_table
     mov  ax, [bx].TCB.stk_limit
     mov  STKHQQ, ax
@@ -1045,7 +1045,7 @@ unhook_hardware ENDP
 ;=============================================================================
 
 ;-----------------------------------------------------------------------------
-; int MT_API thread_init(unsigned char pit_shift, unsigned char main_prio)
+; void MT_API thread_init(unsigned char pit_shift, unsigned char main_prio)
 ;-----------------------------------------------------------------------------
 thread_init PROC PUBLIC USES si di ds, pit_shift: BYTE, main_prio: BYTE
     mov  ax, @data
@@ -1083,7 +1083,7 @@ skip_atexit_reg:
     add  si, 0458h
     mov  iostack_off, si
 
-    ; 3. Clear TCB table and initialize Thread 0 (main C thread)
+    ; 3. Clear TCB table and initialize thread 0 (main C thread)
     push ds
     pop  es
     mov  di, OFFSET tcb_table
@@ -1164,7 +1164,7 @@ skip_hook_67:
     mov  pit_sub_reload, al
     mov  pit_sub_count, al
 
-    ; Save INT 08h & INT 21h before entering CLI
+    ; Save INT 08h & INT 21h before entering critical section to avoid race with timer ISR
     mov  ax, 3508h
     int  21h
     mov  WORD PTR cs:[old_int08], bx
@@ -1205,7 +1205,7 @@ set_pit_div:
     out  40h, al
     sti
 
-    xor  ax, ax
+    ; Done
     ret
 thread_init ENDP
 
@@ -1393,7 +1393,7 @@ resolve_stack_ptr:
 
     add  ax, stack_size
     and  ax, 0FFFEh                 ; Word-align top of stack
-    mov  bx, ax                     ; DX:BX = top of new thread's stack
+    mov  bx, ax                     ; DX:BX = top of new thread''s stack
 
     ; 6. Seed initial stack frame for func(arg) so returning enters thread_exit
     mov  es, dx
@@ -1502,7 +1502,7 @@ thread_exit PROC PUBLIC
     mov  ds, cs:[dgroup_seg]
     cli
 
-    ; 1. Clear exiting thread's bit from active_mask
+    ; 1. Clear exiting thread''s bit from active_mask
     mov  bl, current_tid
     xor  bh, bh
     mov  al, tid_bit_lut[bx]
@@ -1553,7 +1553,7 @@ thread_exit ENDP
 ; Blocks until thread `tid` exits and reclaims its stack if auto-allocated.
 ;-----------------------------------------------------------------------------
 thread_join PROC PUBLIC USES si di ds, tid: BYTE
-    mov  dx, ds                     ; Save caller's DS in DX
+    mov  dx, ds                     ; Save caller''s DS in DX
     mov  ds, cs:[dgroup_seg]
 
     mov  bl, tid
@@ -1595,7 +1595,7 @@ thread_join ENDP
 ; Blocks until all other active threads have exited, then reaps zombie stacks.
 ;-----------------------------------------------------------------------------
 thread_join_all PROC PUBLIC USES si di ds
-    mov  dx, ds                     ; Save caller's DS in DX
+    mov  dx, ds                     ; Save caller''s DS in DX
     mov  ds, cs:[dgroup_seg]
 
     mov  bl, current_tid
@@ -1699,8 +1699,8 @@ thread_set_priority ENDP
 ; Entry: DS = DGROUP, AL = wait_mask (must be non-zero), IF = 0
 ; Exit:  DL = woken TID (0..7)
 ;        SI = woken TCB pointer
-;        DH = woken thread's priority (tcb_prio)
-;        AL = bitmask with woken thread's bit cleared (updated wait_mask)
+;        DH = woken thread''s priority (tcb_prio)
+;        AL = bitmask with woken thread''s bit cleared (updated wait_mask)
 ;-----------------------------------------------------------------------------
 wake_highest_waiter PROC NEAR
     push bx
@@ -1785,7 +1785,7 @@ wake_all_waiters ENDP
 
 ;-----------------------------------------------------------------------------
 ; block_on_sync - Blocks current thread in STATE_WAIT_SYNC & switches context
-; Entry: DS = DGROUP, caller's original DS in AX, IF = 0
+; Entry: DS = DGROUP, caller''s original DS in AX, IF = 0
 ;-----------------------------------------------------------------------------
 block_on_sync PROC NEAR
     mov  cs:[scratch_ds], ax
@@ -1799,8 +1799,8 @@ block_on_sync PROC NEAR
 block_on_sync ENDP
 
 ;-----------------------------------------------------------------------------
-; preempt_if_higher - Yields immediately if DH > current thread's priority
-; Entry: DS = DGROUP, DH = woken thread's priority, caller's DS in AX, IF = 0
+; preempt_if_higher - Yields immediately if DH > current thread''s priority
+; Entry: DS = DGROUP, DH = woken thread''s priority, caller''s DS in AX, IF = 0
 ;-----------------------------------------------------------------------------
 preempt_if_higher PROC NEAR
     mov  bx, current_tcb
@@ -1844,7 +1844,7 @@ ev_set_sig:
 event_init ENDP
 
 event_set PROC PUBLIC USES si di ds, ev: DATA_PTR
-    mov  dx, ds                     ; Save caller's DS in DX
+    mov  dx, ds                     ; Save caller''s DS in DX
     mov  ds, cs:[dgroup_seg]
     LOAD_DATA_PTR di, ev
 
@@ -1922,7 +1922,7 @@ ev_pulse_done:
 event_pulse ENDP
 
 event_wait PROC PUBLIC USES di ds, ev: DATA_PTR
-    mov  dx, ds                     ; Save caller's DS in DX
+    mov  dx, ds                     ; Save caller''s DS in DX
     mov  ds, cs:[dgroup_seg]
     LOAD_DATA_PTR di, ev
 
@@ -1982,12 +1982,12 @@ mutex_lock PROC PUBLIC USES si di ds, mtx: DATA_PTR
     ; Apply Priority Inheritance if current thread outranks owner!
     xor  bh, bh
     SHL_IMM bx, 6
-    add  bx, OFFSET tcb_table       ; BX = owner's TCB
-    mov  si, current_tcb            ; SI = current thread's TCB
+    add  bx, OFFSET tcb_table       ; BX = owner''s TCB
+    mov  si, current_tcb            ; SI = current thread''s TCB
     mov  ah, [si].TCB.tcb_prio
     cmp  ah, [bx].TCB.tcb_prio
     jle  mtx_add_waiter
-    mov  [bx].TCB.tcb_prio, ah      ; Boost owner's effective priority
+    mov  [bx].TCB.tcb_prio, ah      ; Boost owner''s effective priority
 
 mtx_add_waiter:
     mov  bl, al
@@ -2046,7 +2046,7 @@ mtx_try_rec:
 mutex_trylock ENDP
 
 mutex_unlock PROC PUBLIC USES si di ds, mtx: DATA_PTR
-    mov  cx, ds                     ; Save caller's DS in CX
+    mov  cx, ds                     ; Save caller''s DS in CX
     mov  ds, cs:[dgroup_seg]
     LOAD_DATA_PTR di, mtx
 
@@ -2059,7 +2059,7 @@ mutex_unlock PROC PUBLIC USES si di ds, mtx: DATA_PTR
     dec  es:[di].MT_MUTEX.mtx_count
     jnz  mtx_unlock_done            ; Still recursively held
 
-    ; Restore current thread's base priority (undo any priority inheritance)
+    ; Restore current thread''s base priority (undo any priority inheritance)
     mov  bx, current_tcb
     mov  al, [bx].TCB.tcb_base_prio
     mov  [bx].TCB.tcb_prio, al
@@ -2187,20 +2187,20 @@ cond_wait PROC PUBLIC USES si di ds, cv: DATA_PTR, mtx: DATA_PTR
     pushf
     cli
 
-    ; 1. Add current thread to Condition Variable's cv_wait_mask
+    ; 1. Add current thread to Condition Variable''s cv_wait_mask
     LOAD_DATA_PTR di, cv
     mov  bl, current_tid
     xor  bh, bh
     mov  al, tid_bit_lut[bx]
     or   es:[di].MT_COND.cv_wait_mask, al
 
-    ; 2. Save mutex's recursive lock_count and completely release the mutex
+    ; 2. Save mutex''s recursive lock_count and completely release the mutex
     LOAD_DATA_PTR di, mtx
     mov  al, es:[di].MT_MUTEX.mtx_count
     mov  saved_count, al
     mov  es:[di].MT_MUTEX.mtx_count, 1
 
-    ; Restore current thread's base priority & wake next mutex waiter if any
+    ; Restore current thread''s base priority & wake next mutex waiter if any
     mov  bx, current_tcb
     mov  al, [bx].TCB.tcb_base_prio
     mov  [bx].TCB.tcb_prio, al

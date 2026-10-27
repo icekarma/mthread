@@ -5,6 +5,9 @@
 #if !defined MTHREAD_H
 #define MTHREAD_H
 
+#include <stddef.h>
+#include <stdlib.h>
+
 #if defined __cplusplus
 extern "C" {
 #endif
@@ -47,7 +50,7 @@ typedef unsigned char tid_t;
 typedef void ( MT_API* thread_func_t )( void* arg );
 
 /* Core Lifecycle API */
-int           MT_API thread_init( unsigned char pit_shift, unsigned char main_prio );
+void          MT_API thread_init( unsigned char pit_shift, unsigned char main_prio );
 void          MT_API thread_shutdown( void );
 void          MT_API thread_abort( void );
 int           MT_API thread_break_requested( void );

@@ -8,16 +8,12 @@ endif
 
 .MODEL MODEL_NAME, C
 
-IFDEF USE_186
-    .186
-ELSE
-    .8086
-ENDIF
+ifdef OFFSET_DISPLAY
+    .DATA
 
-.DATA
-
-EXTERN row_offset: WORD
-EXTERN col_offset: WORD
+    EXTERN row_offset: WORD
+    EXTERN col_offset: WORD
+endif
 
 .CODE
 
@@ -34,9 +30,13 @@ video_gotoxy PROC PUBLIC, row: BYTE, col: BYTE
 
     mov  ah, 02h                   ; BIOS Set Cursor Position
     mov  dh, row                   ; Load 0-based row
+ifdef OFFSET_DISPLAY
     add  dh, byte ptr [row_offset] ; Adjust for row offset
+endif
     mov  dl, col                   ; Load 0-based column
+ifdef OFFSET_DISPLAY
     add  dl, byte ptr [col_offset] ; Adjust for column offset
+endif
     int  10h
     ret
 video_gotoxy ENDP

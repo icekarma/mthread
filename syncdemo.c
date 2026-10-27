@@ -49,6 +49,7 @@ void MT_API low_lock_holder( void* arg ) {
     int const             row  = 7;
     unsigned int          step;
     volatile unsigned int burn;
+    (void) arg;
 
     video_puts( row, 16, 0x0E, "[WAIT GATE]" );
     event_wait( &g_start_ev );
@@ -91,6 +92,7 @@ void MT_API med_cpu_hog( void* arg ) {
     int const             row  = 9;
     unsigned int          idx  = 0;
     volatile unsigned int burn;
+    (void) arg;
 
     video_puts( row, 16, 0x0E, "[WAIT GATE]" );
     event_wait( &g_start_ev );
@@ -105,7 +107,7 @@ void MT_API med_cpu_hog( void* arg ) {
         video_putc( row, 30, 0x0E, g_spinner[idx] );
         video_putu16( row, 68, 0x0E, g_med_hog_loops );
 
-        /* Brief sleep every 16 loops so LOW thread can initially grab mutex */
+        /* Brief sleep every 16 iterations so LOW thread can initially grab mutex */
         if ( ( g_med_hog_loops & 15 ) == 0 ) {
             video_puts( row, 16, 0x08, "[NAP 4 TK ]" );
             thread_sleep( 4 );
@@ -119,6 +121,7 @@ void MT_API med_cpu_hog( void* arg ) {
  *---------------------------------------------------------------------------*/
 void MT_API high_lock_waiter( void* arg ) {
     int const row = 11;
+    (void) arg;
 
     video_puts( row, 16, 0x0E, "[WAIT GATE]" );
     event_wait( &g_start_ev );
@@ -150,6 +153,7 @@ void MT_API sem_producer( void* arg ) {
     char         next_ch  = 'A';
     unsigned int produced = 0;
     unsigned int slot;
+    (void) arg;
 
     video_puts( row, 16, 0x0E, "[WAIT GATE]" );
     event_wait( &g_start_ev );
@@ -169,7 +173,7 @@ void MT_API sem_producer( void* arg ) {
         /* Render item into visual ring buffer on row 14 */
         video_putc( 14, 31 + slot * 3, 0x2F, next_ch );
 
-        next_ch = ( next_ch == 'Z' ) ? 'A' : (char) ( next_ch + 1 );
+        next_ch = (char) ( ( next_ch == 'Z' ) ? 'A' : ( next_ch + 1 ) );
         ++produced;
         video_putu16( row, 68, 0x0E, produced );
 
@@ -191,6 +195,7 @@ void MT_API sem_consumer( void* arg ) {
     int const    row  = 16;
     unsigned int slot;
     char         ch;
+    (void) arg;
 
     video_puts( row, 16, 0x0E, "[WAIT GATE]" );
     event_wait( &g_start_ev );
@@ -228,26 +233,30 @@ void MT_API sem_consumer( void* arg ) {
 }
 
 /*---------------------------------------------------------------------------
- * Main Thread (TID 0): Waits on Condition Variable & monitors keyboard
+ * Main thread (TID 0): Waits on Condition Variable & monitors keyboard
  *---------------------------------------------------------------------------*/
 int main( void ) {
     unsigned int last_batch_seen = 0;
     unsigned int countdown;
 
     video_init( );
-    video_clear( );
-    video_puts(  1, 8, 0x1F, " === MS-DOS 8086 SYNCHRONIZATION PRIMITIVES SHOWCASE (SYNCDEMO) === "             );
-    video_puts(  3, 2, 0x07, "Primitives: Manual/Auto Events | Priority-Inherited Mutex | Semaphores | CondVar" );
-    video_puts(  5, 2, 0x0B, "Thread        State        Visual Telemetry                       Count"          );
+    video_clear( 0x07 );
+#if defined RULER
+    video_ruler( );
+#endif
+    video_puts(  1, 6, 0x1F, " === MS-DOS 8086 SYNCHRONIZATION PRIMITIVES SHOWCASE (SYNCDEMO) === "             );
+    video_puts(  3, 0, 0x07, "Primitives: Manual/auto events | Priority-inherited mutex | Semaphores | CondVar" );
+    video_puts(  5, 2, 0x0B, "Thread        State        Visual telemetry                       Count"          );
     video_puts(  6, 2, 0x07, "-----------------------------------------------------------------------"          );
-    video_puts(  7, 2, 0x0F, "TID 1 (LOW)   [INIT     ]  ........................ (PI Mutex)"                   );
-    video_puts(  9, 2, 0x0F, "TID 2 (NORM)  [INIT     ]  [ ] Medium CPU Hog"                                    );
-    video_puts( 11, 2, 0x0F, "TID 3 (HIGH)  [INIT     ]  Direct Mutex Handoffs:"                                );
-    video_puts( 13, 2, 0x0F, "TID 4 (PROD)  [INIT     ]  Semaphore Ring Producer"                               );
-    video_puts( 14, 2, 0x07, "              Ring Buffer: [ .  .  .  .  .  .  .  . ]"                            );
-    video_puts( 16, 2, 0x0F, "TID 5 (CONS)  [INIT     ]  Last Item: [ ]"                                        );
-    video_puts( 18, 2, 0x0E, "TID 0 (MAIN)  CondVar Batches (8 items/batch) Completed:"                         );
-    video_puts( 21, 2, 0x0A, "Starting Gun Event Countdown:"                                                    );
+    video_puts(  7, 2, 0x0F, "TID 1 (LOW)   [INIT     ]  ........................ (PI mutex)"                   );
+    video_puts(  9, 2, 0x0F, "TID 2 (NORM)  [INIT     ]  [ ] Medium CPU hog"                                    );
+    video_puts( 11, 2, 0x0F, "TID 3 (HIGH)  [INIT     ]  Direct mutex handoffs:"                                );
+    video_puts( 13, 2, 0x0F, "TID 4 (PROD)  [INIT     ]  Semaphore ring producer"                               );
+    video_puts( 14, 2, 0x07, "              Ring buffer: [ .  .  .  .  .  .  .  . ]"                            );
+    video_puts( 16, 2, 0x0F, "TID 5 (CONS)  [INIT     ]  Last item: [ ]"                                        );
+    video_puts( 18, 2, 0x0E, "TID 0 (MAIN)  CondVar batches (8 items/batch) completed:"                         );
+    video_puts( 21, 2, 0x0A, "Starting gun event countdown:"                                                    );
+    video_gotoxy( 21, 37 );
 
     /* Initialize primitives */
     event_init( &g_start_ev, 1, 0 );     /* Manual-reset, initially non-signaled */
@@ -268,13 +277,14 @@ int main( void ) {
     thread_create( sem_producer,     NULL, NULL, 1024, MT_PRIO_NORMAL );
     thread_create( sem_consumer,     NULL, NULL, 1024, MT_PRIO_NORMAL );
 
-    /* Countdown before firing the Manual-Reset Starting Gun Event */
+    /* Countdown before firing the manual-reset starting gun event */
     for ( countdown = 3; countdown > 0; --countdown ) {
         video_putu16( 21, 32, 0x0C, countdown );
         thread_sleep( 50 );
     }
 
-    video_puts( 21, 2, 0x0A, "Manual-Reset Event FIRED! Press 'Q' or ESC to quit...              " );
+    video_puts( 21, 2, 0x0A, "Manual-reset event FIRED! Press 'Q' or ESC to quit...              " );
+    video_gotoxy( 21, 55 );
     event_set( &g_start_ev );
 
     /* Main loop: wait on Condition Variable for batches while checking keyboard */
@@ -311,6 +321,6 @@ int main( void ) {
     thread_shutdown( );
 
     video_gotoxy( 22, 0 );
-    printf( "\nSyncDemo complete: %u Priority-Inherited handoffs, %u CondVar batches.\n", g_pi_handoffs, last_batch_seen );
+    printf( "SyncDemo complete: %u priority-inherited handoffs, %u CondVar batches.\n", g_pi_handoffs, last_batch_seen );
     return 0;
 }
