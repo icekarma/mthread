@@ -87,6 +87,9 @@ cls:
 mthread.obj: mthread.asm mthread.inc mthread.h
 	$(AS) $(AFLAGS) mthread.asm
 
+mthrwrap.obj: mthrwrap.cpp mthread.h mthrwrap.h
+	$(CC) $(CFLAGS) mthrwrap.cpp
+
 videohlp.obj: videohlp.asm
 	$(AS) $(AFLAGS) /DOFFSET_DISPLAY videohlp.asm
 
