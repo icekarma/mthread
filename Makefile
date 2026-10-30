@@ -73,7 +73,7 @@ LIB_CMD  = wlib -q -b -n
 !ENDIF
 
 # --- 4. Build Targets ---
-TARGETS = demo.exe syncdemo.exe cppdemo.exe cppsync.exe
+TARGETS = mthread.lib vid.lib demo.exe syncdemo.exe cppdemo.exe cppsync.exe
 
 all: cls $(TARGETS)
 
@@ -83,12 +83,21 @@ cls:
 	@echo Compiler:     $(COMPILER)
 	@echo Memory model: $(MODEL)
 	@echo Target CPU:   $(CPU)
+	@echo.
 
 mthread.obj: mthread.asm mthread.inc mthread.h
 	$(AS) $(AFLAGS) mthread.asm
 
 mthrwrap.obj: mthrwrap.cpp mthread.h mthrwrap.h
 	$(CC) $(CFLAGS) mthrwrap.cpp
+
+mthread.lib: mthread.obj mthrwrap.obj
+	-if exist mthread.lib del mthread.lib
+!IF "$(COMPILER)" == "MSC"
+	$(LIB_CMD) mthread.lib +mthread.obj +mthrwrap.obj;
+!ELSE
+	$(LIB_CMD) mthread.lib +mthread.obj +mthrwrap.obj
+!ENDIF
 
 videohlp.obj: videohlp.asm
 	$(AS) $(AFLAGS) /DOFFSET_DISPLAY videohlp.asm
@@ -107,26 +116,26 @@ vid.lib: video.obj videohlp.obj
 demo.obj: demo.c mthread.h video.h
 	$(CC) $(CFLAGS) demo.c
 
-demo.exe: demo.obj mthread.obj vid.lib
-	$(LINK_CMD) demo.obj mthread.obj vid.lib
+demo.exe: demo.obj mthread.lib vid.lib
+	$(LINK_CMD) demo.obj mthread.lib vid.lib
 
 syncdemo.obj: syncdemo.c mthread.h video.h
 	$(CC) $(CFLAGS) /DRULER syncdemo.c
 
-syncdemo.exe: syncdemo.obj mthread.obj vid.lib
-	$(LINK_CMD) syncdemo.obj mthread.obj vid.lib
+syncdemo.exe: syncdemo.obj mthread.lib vid.lib
+	$(LINK_CMD) syncdemo.obj mthread.lib vid.lib
 
 cppdemo.obj: cppdemo.cpp mthread.h mthrwrap.h video.h
 	$(CC) $(CFLAGS) cppdemo.cpp
 
-cppdemo.exe: cppdemo.obj mthread.obj mthrwrap.obj vid.lib
-	$(LINK_CMD) cppdemo.obj mthread.obj mthrwrap.obj vid.lib
+cppdemo.exe: cppdemo.obj mthread.lib vid.lib
+	$(LINK_CMD) cppdemo.obj mthread.lib vid.lib
 
 cppsync.obj: cppsync.cpp mthread.h mthrwrap.h video.h
 	$(CC) $(CFLAGS) cppsync.cpp
 
-cppsync.exe: cppsync.obj mthread.obj mthrwrap.obj vid.lib
-	$(LINK_CMD) cppsync.obj mthread.obj mthrwrap.obj vid.lib
+cppsync.exe: cppsync.obj mthread.lib vid.lib
+	$(LINK_CMD) cppsync.obj mthread.lib vid.lib
 
 clean:
 	-if exist *.obj del *.obj
