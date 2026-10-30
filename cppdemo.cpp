@@ -232,7 +232,7 @@ int main( int argc, char* argv[] ) {
 
     // Main loop: exercises DOS IOStack (kbhit/getch & DOS AH=02h)
     while ( g_running ) {
-        if ( MThreadManager::BreakRequested( ) ) {
+        if ( MThreadManager::IsBreakRequested( ) ) {
             g_running = 0;
             break;
         }

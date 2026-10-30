@@ -76,8 +76,8 @@ public:
         thread_abort( );
     }
 
-    static int BreakRequested( ) {
-        return thread_break_requested( );
+    static int IsBreakRequested( ) {
+        return thread_is_break_requested( );
     }
 
     static unsigned int GetCriticalError( ) {

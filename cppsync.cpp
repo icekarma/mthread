@@ -297,7 +297,7 @@ int main( void ) {
 
     /* Main loop: wait on Condition Variable for batches while checking keyboard */
     while ( g_running ) {
-        if ( MThreadManager::BreakRequested( ) ) {
+        if ( MThreadManager::IsBreakRequested( ) ) {
             g_running = 0;
             break;
         }
@@ -314,7 +314,7 @@ int main( void ) {
             MLockGuard lock( g_batch_mtx );
             while ( ( g_batches_ready == last_batch_seen ) && g_running ) {
                 /* Check keyboard or break periodically or wait for CondVar signal */
-                if ( _kbhit( ) || MThreadManager::BreakRequested( ) ) {
+                if ( _kbhit( ) || MThreadManager::IsBreakRequested( ) ) {
                     break;
                 }
                 g_batch_cv.Wait( g_batch_mtx );

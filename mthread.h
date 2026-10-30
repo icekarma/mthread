@@ -59,7 +59,7 @@ typedef void ( MT_API* thread_func_t )( void* arg );
 void          MT_API thread_init( unsigned char pit_shift, unsigned char main_prio );
 void          MT_API thread_shutdown( void );
 void          MT_API thread_abort( void );
-int           MT_API thread_break_requested( void );
+int           MT_API thread_is_break_requested( void );
 unsigned int  MT_API thread_get_critical_error( void );
 
 /* Pass stack_ptr = NULL to auto-allocate via malloc();

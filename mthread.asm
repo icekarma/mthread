@@ -1232,16 +1232,16 @@ thread_shutdown PROC PUBLIC USES si di ds
 thread_shutdown ENDP
 
 ;-----------------------------------------------------------------------------
-; int MT_API thread_break_requested(void)
+; int MT_API thread_is_break_requested(void)
 ;-----------------------------------------------------------------------------
-thread_break_requested PROC PUBLIC
+thread_is_break_requested PROC PUBLIC
     push ds
     mov  ds, cs:[dgroup_seg]
     xor  ax, ax
     mov  al, break_flag
     pop  ds
     ret
-thread_break_requested ENDP
+thread_is_break_requested ENDP
 
 ;-----------------------------------------------------------------------------
 ; unsigned int MT_API thread_get_critical_error(void)
