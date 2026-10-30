@@ -120,7 +120,7 @@ demo.exe: demo.obj mthread.lib vid.lib
 	$(LINK_CMD) demo.obj mthread.lib vid.lib
 
 syncdemo.obj: syncdemo.c mthread.h video.h
-	$(CC) $(CFLAGS) /DRULER syncdemo.c
+	$(CC) $(CFLAGS) syncdemo.c
 
 syncdemo.exe: syncdemo.obj mthread.lib vid.lib
 	$(LINK_CMD) syncdemo.obj mthread.lib vid.lib
