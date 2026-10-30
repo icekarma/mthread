@@ -51,11 +51,11 @@ void MT_API low_lock_holder( void* arg ) {
     volatile unsigned int burn;
     (void) arg;
 
-    video_puts( row, 16, 0x0E, "[WAIT GATE]" );
+    video_puts( row, 18, 0x1E, "[WAIT GATE]" );
     event_wait( &g_start_ev );
 
     while ( g_running ) {
-        video_puts( row, 16, 0x07, "[UNLOCKED ]" );
+        video_puts( row, 18, 0x17, "[UNLOCKED ]" );
         thread_sleep( 10 );
 
         mutex_lock( &g_pi_mtx );
@@ -63,14 +63,14 @@ void MT_API low_lock_holder( void* arg ) {
         mutex_lock( &g_pi_mtx );
         mutex_unlock( &g_pi_mtx );
 
-        video_puts( row, 16, 0x0B, "[HOLD PR=1]" );
-        video_puts( row, 29, 0x08, "........................" );
+        video_puts( row, 18, 0x1B, "[HOLD PR=1]" );
+        video_puts( row, 31, 0x19, "........................" );
 
         for ( step = 0; ( step < 24 ) && g_running; ++step ) {
             /* At step 8, wake TID 3 (HIGH) via Auto-Reset Event so it contends
              * on g_pi_mtx and boosts our priority from LOW (1) to HIGH (5)! */
             if ( step == 8 ) {
-                video_puts( row, 16, 0x0A, "[BOOST->P5]" );
+                video_puts( row, 18, 0x1A, "[BOOST->P5]" );
                 event_set( &g_high_trig_ev );
             }
 
@@ -78,7 +78,7 @@ void MT_API low_lock_holder( void* arg ) {
                 /* Busy work inside mutex */
             }
 
-            video_putc( row, 29 + step, (unsigned char) ( step >= 8 ? 0x2F : 0x1F ), 0xFE );
+            video_putc( row, 31 + step, (unsigned char) ( step >= 8 ? 0x2F : 0x1F ), 0xFE );
         }
 
         mutex_unlock( &g_pi_mtx );
@@ -94,9 +94,9 @@ void MT_API med_cpu_hog( void* arg ) {
     volatile unsigned int burn;
     (void) arg;
 
-    video_puts( row, 16, 0x0E, "[WAIT GATE]" );
+    video_puts( row, 18, 0x1E, "[WAIT GATE]" );
     event_wait( &g_start_ev );
-    video_puts( row, 16, 0x0A, "[CPU HOG  ]" );
+    video_puts( row, 18, 0x1A, "[CPU HOG  ]" );
 
     while ( g_running ) {
         for ( burn = 0; burn < 6000; ++burn ) {
@@ -104,14 +104,14 @@ void MT_API med_cpu_hog( void* arg ) {
         }
         ++g_med_hog_loops;
         idx = ( idx + 1 ) & 3;
-        video_putc( row, 30, 0x0E, g_spinner[idx] );
-        video_putu16( row, 68, 0x0E, g_med_hog_loops );
+        video_putc( row, 32, 0x1E, (unsigned char) g_spinner[idx] );
+        video_putu16( row, 71, 0x1E, g_med_hog_loops );
 
         /* Brief sleep every 16 iterations so LOW thread can initially grab mutex */
         if ( ( g_med_hog_loops & 15 ) == 0 ) {
-            video_puts( row, 16, 0x08, "[NAP 4 TK ]" );
+            video_puts( row, 18, 0x19, "[NAP: 4 TK]" );
             thread_sleep( 4 );
-            video_puts( row, 16, 0x0A, "[CPU HOG  ]" );
+            video_puts( row, 18, 0x1A, "[CPU HOG  ]" );
         }
     }
 }
@@ -123,23 +123,23 @@ void MT_API high_lock_waiter( void* arg ) {
     int const row = 11;
     (void) arg;
 
-    video_puts( row, 16, 0x0E, "[WAIT GATE]" );
+    video_puts( row, 18, 0x1E, "[WAIT GATE]" );
     event_wait( &g_start_ev );
 
     while ( g_running ) {
-        video_puts( row, 16, 0x08, "[WAIT EVNT]" );
+        video_puts( row, 18, 0x19, "[WAIT EVNT]" );
         event_wait( &g_high_trig_ev );
         if ( !g_running ) {
             break;
         }
 
         /* Contend on g_pi_mtx -> boosts TID 1 to MT_PRIO_HIGH! */
-        video_puts( row, 16, 0x0C, "[WAIT MTX ]" );
+        video_puts( row, 18, 0x1C, "[WAIT MTX ]" );
         mutex_lock( &g_pi_mtx );
 
         ++g_pi_handoffs;
-        video_puts( row, 16, 0x0A, "[GOT LOCK!]" );
-        video_putu16( row, 68, 0x0A, g_pi_handoffs );
+        video_puts( row, 18, 0x1A, "[GOT LOCK!]" );
+        video_putu16( row, 71, 0x1A, g_pi_handoffs );
 
         mutex_unlock( &g_pi_mtx );
     }
@@ -155,27 +155,27 @@ void MT_API sem_producer( void* arg ) {
     unsigned int slot;
     (void) arg;
 
-    video_puts( row, 16, 0x0E, "[WAIT GATE]" );
+    video_puts( row, 18, 0x1E, "[WAIT GATE]" );
     event_wait( &g_start_ev );
 
     while ( g_running ) {
-        video_puts( row, 16, 0x0C, "[WAIT SEM ]" );
+        video_puts( row, 18, 0x1C, "[WAIT SEM ]" );
         sem_wait( &g_sem_empty );
         if ( !g_running ) {
             break;
         }
 
-        video_puts( row, 16, 0x0A, "[PRODUCING]" );
+        video_puts( row, 18, 0x1A, "[PRODUCING]" );
         slot = g_head;
         g_ring_buf[slot] = next_ch;
         g_head = ( slot + 1 ) & ( RING_SIZE - 1 );
 
         /* Render item into visual ring buffer on row 14 */
-        video_putc( 14, 31 + slot * 3, 0x2F, next_ch );
+        video_putc( 14, 33 + slot * 3, 0x2F, next_ch );
 
         next_ch = (char) ( ( next_ch == 'Z' ) ? 'A' : ( next_ch + 1 ) );
         ++produced;
-        video_putu16( row, 68, 0x0E, produced );
+        video_putu16( row, 71, 0x1E, produced );
 
         sem_post( &g_sem_filled );
 
@@ -197,31 +197,31 @@ void MT_API sem_consumer( void* arg ) {
     char         ch;
     (void) arg;
 
-    video_puts( row, 16, 0x0E, "[WAIT GATE]" );
+    video_puts( row, 18, 0x1E, "[WAIT GATE]" );
     event_wait( &g_start_ev );
 
     while ( g_running ) {
-        video_puts( row, 16, 0x08, "[WAIT ITEM]" );
+        video_puts( row, 18, 0x19, "[WAIT ITEM]" );
         sem_wait( &g_sem_filled );
         if ( !g_running ) {
             break;
         }
 
-        video_puts( row, 16, 0x0B, "[CONSUMING]" );
+        video_puts( row, 18, 0x1B, "[CONSUMING]" );
         slot = g_tail;
         ch = g_ring_buf[slot];
         g_tail = ( slot + 1 ) & ( RING_SIZE - 1 );
 
         /* Clear slot in visual ring buffer on row 14 */
-        video_putc( 14, 31 + slot * 3, 0x07, '.' );
-        video_putc( row, 41, 0x1F, ch );
+        video_putc( 14, 33 + slot * 3, 0x19, '.' );
+        video_putc( row, 43, 0x1E, ch );
 
         sem_post( &g_sem_empty );
 
         /* Update batch state under g_batch_mtx and signal CondVar every 8 items */
         mutex_lock( &g_batch_mtx );
         ++g_items_consumed;
-        video_putu16( row, 68, 0x0E, g_items_consumed );
+        video_putu16( row, 71, 0x1E, g_items_consumed );
         if ( ( g_items_consumed & 7 ) == 0 ) {
             ++g_batches_ready;
             cond_signal( &g_batch_cv );
@@ -240,23 +240,30 @@ int main( void ) {
     unsigned int countdown;
 
     video_init( );
-    video_clear( 0x07 );
+    video_clear( 0x17 );
 #if defined RULER
     video_ruler( 1, 3 );
 #endif
-    video_puts(  1, 6, 0x1F, " === MS-DOS 8086 SYNCHRONIZATION PRIMITIVES SHOWCASE (SYNCDEMO) === "             );
-    video_puts(  3, 0, 0x07, "Primitives: Manual/auto events | Priority-inherited mutex | Semaphores | CondVar" );
-    video_puts(  5, 2, 0x0B, "Thread        State        Visual telemetry                       Count"          );
-    video_puts(  6, 2, 0x07, "-----------------------------------------------------------------------"          );
-    video_puts(  7, 2, 0x0F, "TID 1 (LOW)   [INIT     ]  ........................ (PI mutex)"                   );
-    video_puts(  9, 2, 0x0F, "TID 2 (NORM)  [INIT     ]  [ ] Medium CPU hog"                                    );
-    video_puts( 11, 2, 0x0F, "TID 3 (HIGH)  [INIT     ]  Direct mutex handoffs:"                                );
-    video_puts( 13, 2, 0x0F, "TID 4 (PROD)  [INIT     ]  Semaphore ring producer"                               );
-    video_puts( 14, 2, 0x07, "              Ring buffer: [ .  .  .  .  .  .  .  . ]"                            );
-    video_puts( 16, 2, 0x0F, "TID 5 (CONS)  [INIT     ]  Last item: [ ]"                                        );
-    video_puts( 18, 2, 0x0E, "TID 0 (MAIN)  CondVar batches (8 items/batch) completed:"                         );
-    video_puts( 21, 2, 0x0A, "Starting gun event countdown:"                                                    );
-    video_gotoxy( 21, 37 );
+    video_puts(    1,  7, 0x1F,        "\xCD\xCD\xCD MS-DOS 8086 SYNCHRONIZATION PRIMITIVES SHOWCASE (SYNCDEMO) \xCD\xCD\xCD" );
+    video_puts(    3,  0, 0x17, "Primitives: Manual/auto events | Priority-inherited mutex | Semaphores | CondVar" );
+    video_puts(    5,  4, 0x1B,     "Thread        State        Visual telemetry                        Count"     );
+    video_puts(    6,  4, 0x17,     "\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4"     );
+    video_puts(    7,  4, 0x1F,     "TID 1 (LOW)   [INIT     ]                           (PI mutex)"               );
+    video_puts(    7, 31, 0x19,                                "........................"                          );
+    video_puts(    9,  4, 0x1F,     "TID 2 (NORM)  [INIT     ]  [ ] Medium CPU hog"                                );
+    video_puts(   11,  4, 0x1F,     "TID 3 (HIGH)  [INIT     ]  Direct mutex handoffs:"                            );
+    video_puts(   13,  4, 0x1F,     "TID 4 (PROD)  [INIT     ]  Semaphore ring producer"                           );
+    video_puts(   14,  4, 0x17,     "              Ring buffer: [ .  .  .  .  .  .  .  . ]"                        );
+    video_puts(   16,  4, 0x1F,     "TID 5 (CONS)  [INIT     ]  Last item: [ ]"                                    );
+    video_puts(   18,  4, 0x1E,     "TID 0 (MAIN)  CondVar batches (8 items/batch) completed:"                     );
+    video_puts(   21, 22, 0x1A,                       "Starting gun event countdown:  xxxxx"                       );
+    video_putu16(  9, 71, 0x1E, 0 );
+    video_putu16( 11, 71, 0x1A, 0 );
+    video_putu16( 13, 71, 0x1E, 0 );
+    video_putu16( 16, 71, 0x1E, 0 );
+    video_putu16( 18, 71, 0x1A, 0 );
+
+    video_gotoxy( 21, 58 );
 
     /* Initialize primitives */
     event_init( &g_start_ev, 1, 0 );     /* Manual-reset, initially non-signaled */
@@ -279,12 +286,12 @@ int main( void ) {
 
     /* Countdown before firing the manual-reset starting gun event */
     for ( countdown = 3; countdown > 0; --countdown ) {
-        video_putu16( 21, 32, 0x0C, countdown );
-        thread_sleep( 50 );
+        video_putu16( 21, 53, 0x1C, countdown );
+        thread_sleep( 72 );
     }
 
-    video_puts( 21, 2, 0x0A, "Manual-reset event FIRED! Press 'Q' or ESC to quit...              " );
-    video_gotoxy( 21, 55 );
+    video_puts( 21, 15, 0x1A, "Manual-reset event FIRED! Press 'Q' or Esc to quit" );
+    video_gotoxy( 21, 65 );
     event_set( &g_start_ev );
 
     /* Main loop: wait on Condition Variable for batches while checking keyboard */
@@ -308,7 +315,7 @@ int main( void ) {
         last_batch_seen = g_batches_ready;
         mutex_unlock( &g_batch_mtx );
 
-        video_putu16( 18, 68, 0x0A, last_batch_seen );
+        video_putu16( 18, 71, 0x1A, last_batch_seen );
     }
 
     /* Wake any blocked threads so they observe g_running == 0 and exit cleanly */
@@ -321,6 +328,6 @@ int main( void ) {
     thread_shutdown( );
 
     video_gotoxy( 22, 0 );
-    printf( "SyncDemo complete: %u priority-inherited handoffs, %u CondVar batches.\n", g_pi_handoffs, last_batch_seen );
+    printf( "\rSyncDemo complete: %u priority-inherited handoffs, %u CondVar batches.\n", g_pi_handoffs, last_batch_seen );
     return 0;
 }

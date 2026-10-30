@@ -179,25 +179,25 @@ int main( int argc, char* argv[] ) {
 #if defined RULER
     video_ruler( 4, 5 );
 #endif
-    video_puts(  1, 11, 0x1F,        "═══ MS-DOS 8086 PREEMPTIVE MULTITHREADING TEST HARNESS ═══"        );
-    video_puts(  3,  6, 0x17,   "PIT rate:  72.8 Hz (4x) | STKHQQ probes: ON | Hybrid SDA/IOStack: ON"   );
-    video_puts(  5,  4, 0x1B, "Thread        State       Activity                                 Count" );
-    video_puts(  6,  4, 0x17, "────────────────────────────────────────────────────────────────────────" );
-    video_puts(  8,  4, 0x1F, "TID 1 (NORM)              [                                ]"             );
-    video_puts(  8, 18, 0x1A, "[RUNNING ]" );
-    video_puts(  8, 31, 0x1F, "                                " );
-    video_puts(  8, 66, 0x1E, "         0" );
-    video_puts( 10,  4, 0x1F, "TID 2 (NORM)              [                                ]"             );
-    video_puts( 10, 18, 0x1A, "[RUNNING ]" );
-    video_puts( 10, 31, 0x2F, "                                " );
-    video_puts( 10, 66, 0x1E, "         0" );
-    video_puts( 12,  4, 0x17, "TID 3 (LOW )  [PREEMPT ]  Spinner: [ ] (runs when 1&2 sleep)"             );
-    video_puts( 12, 66, 0x1E, "         0" );
-    video_puts( 14,  4, 0x17, "TID 4 (HIGH)  [SLEEPING]  File logger (MTTEST.LOG)"                       );
-    video_puts( 14, 66, 0x1E, "         0" );
-    video_puts( 16,  4, 0x17, "TID 0 (MAIN)              DOS IOStack Heartbeat"                          );
-    video_puts( 16, 66, 0x1E, "         0" );
-    video_puts( 18, 12, 0x1A,         "Press 'Q' or ESC to shut down cleanly and return to DOS."         );
+    video_puts(    1, 10, 0x1F,       "\xCD\xCD\xCD MS-DOS 8086 PREEMPTIVE MULTITHREADING C TEST HARNESS \xCD\xCD\xCD" );
+    video_puts(    3,  6, 0x17,   "PIT rate:  72.8 Hz (4x) | STKHQQ probes: ON | Hybrid SDA/IOStack: ON"   );
+    video_puts(    5,  4, 0x1B, "Thread        State       Activity                                 Count" );
+    video_puts(    6,  4, 0x17, "\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4" );
+    video_puts(    8,  4, 0x1F, "TID 1 (NORM)              [                                ]"             );
+    video_puts(    8, 18, 0x1A, "[RUNNING ]" );
+    video_puts(    8, 31, 0x1F, "                                " );
+    video_puts(   10,  4, 0x1F, "TID 2 (NORM)              [                                ]"             );
+    video_puts(   10, 18, 0x1A, "[RUNNING ]" );
+    video_puts(   10, 31, 0x2F, "                                " );
+    video_puts(   12,  4, 0x17, "TID 3 (LOW )  [PREEMPT ]  Spinner: [ ] (runs when 1&2 sleep)"             );
+    video_puts(   14,  4, 0x17, "TID 4 (HIGH)  [SLEEPING]  File logger (MTTEST.LOG)"                       );
+    video_puts(   16,  4, 0x17, "TID 0 (MAIN)              DOS IOStack heartbeat"                          );
+    video_puts(   18, 12, 0x1A,         "Press 'Q' or Esc to shut down cleanly and return to DOS."         );
+    video_putu32(  8, 66, 0x1E, 0 );
+    video_putu32( 10, 66, 0x1E, 0 );
+    video_putu32( 12, 66, 0x1E, 0 );
+    video_putu32( 14, 66, 0x1E, 0 );
+    video_putu32( 16, 66, 0x1E, 0 );
 
     /* Remove previous log file if present */
     remove( "MTTEST.LOG" );
@@ -242,6 +242,6 @@ int main( int argc, char* argv[] ) {
 
     /* Move cursor below table before returning to COMMAND.COM */
     video_gotoxy( 22, 0 );
-    printf( "Clean shutdown complete. Disk logger wrote %u entries to MTTEST.LOG.\n", g_disk_writes );
+    printf( "\rClean shutdown complete. Disk logger wrote %u entries to MTTEST.LOG.\n", g_disk_writes );
     return 0;
 }
