@@ -51,9 +51,9 @@ WAT_CPU_FLAGS = -0
 CC       = cl
 AS       = ml
 CFLAGS   = /c /A$(MCODE_UPPER) $(MSC_CPU_FLAGS) /Gy /Ox /W3 /Zi /nologo
-AFLAGS   = /c /W3 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) /Zi /nologo
-LINK_CMD = $(CC) /A$(MCODE_UPPER) $(MSC_CPU_FLAGS) #/nologo
-LIB_CMD  = lib /NOLOGO
+AFLAGS   = /c /W2 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) /Zi /nologo
+LINK_CMD = $(CC) /A$(MCODE_UPPER) $(MSC_CPU_FLAGS) /nologo
+LIB_CMD  = lib /nologo
 !ELSEIF "$(COMPILER)" == "BCC"
 CC       = bcc
 AS       = tasm
@@ -73,7 +73,7 @@ LIB_CMD  = wlib -q -b -n
 !ENDIF
 
 # --- 4. Build Targets ---
-TARGETS = demo.exe syncdemo.exe
+TARGETS = demo.exe syncdemo.exe cppdemo.exe cppsync.exe
 
 all: cls $(TARGETS)
 
@@ -115,6 +115,18 @@ syncdemo.obj: syncdemo.c mthread.h video.h
 
 syncdemo.exe: syncdemo.obj mthread.obj vid.lib
 	$(LINK_CMD) syncdemo.obj mthread.obj vid.lib
+
+cppdemo.obj: cppdemo.cpp mthread.h mthrwrap.h video.h
+	$(CC) $(CFLAGS) cppdemo.cpp
+
+cppdemo.exe: cppdemo.obj mthread.obj mthrwrap.obj vid.lib
+	$(LINK_CMD) cppdemo.obj mthread.obj mthrwrap.obj vid.lib
+
+cppsync.obj: cppsync.cpp mthread.h mthrwrap.h video.h
+	$(CC) $(CFLAGS) cppsync.cpp
+
+cppsync.exe: cppsync.obj mthread.obj mthrwrap.obj vid.lib
+	$(LINK_CMD) cppsync.obj mthread.obj mthrwrap.obj vid.lib
 
 clean:
 	-if exist *.obj del *.obj
