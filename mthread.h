@@ -29,11 +29,17 @@ typedef unsigned char tid_t;
 #define MT_ERR_INVALID      0xFC
 
 /* Priority levels (0 = lowest, 7 = highest) */
-#define MT_PRIO_IDLE        0
-#define MT_PRIO_LOW         1
-#define MT_PRIO_NORMAL      3
-#define MT_PRIO_HIGH        5
-#define MT_PRIO_HIGHEST     7
+#define MT_PRIO_IDLE          0
+#define MT_PRIO_LOW           1
+#define MT_PRIO_LOW_PLUS      2
+#define MT_PRIO_NORMAL_MINUS  2
+#define MT_PRIO_NORMAL        3
+#define MT_PRIO_NORMAL_PLUS   4
+#define MT_PRIO_HIGH_MINUS    4
+#define MT_PRIO_HIGH          5
+#define MT_PRIO_HIGH_PLUS     6
+#define MT_PRIO_HIGHEST_MINUS 6
+#define MT_PRIO_HIGHEST       7
 
 /* PIT tick rate shift factors for thread_init(pit_shift):
  *   0 = 1x stock ( 18.2 Hz / 54.9 ms)
