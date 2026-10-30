@@ -186,7 +186,7 @@ int main( int argc, char* argv[] ) {
     video_init( );
     video_clear( 0x17 );
 #if defined RULER
-    video_ruler( );
+    video_ruler( 4, 5 );
 #endif
     video_puts(    1,  9, 0x1F,     "\xCD\xCD\xCD MS-DOS 8086 PREEMPTIVE MULTITHREADING C++ TEST HARNESS \xCD\xCD\xCD"       );
     video_puts(    3,  6, 0x17,   "PIT rate:  72.8 Hz (4x) | STKHQQ probes: ON | Hybrid SDA/IOStack: ON"   );

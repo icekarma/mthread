@@ -242,7 +242,7 @@ int main( void ) {
     video_init( );
     video_clear( 0x07 );
 #if defined RULER
-    video_ruler( );
+    video_ruler( 1, 3 );
 #endif
     video_puts(  1, 6, 0x1F, " === MS-DOS 8086 SYNCHRONIZATION PRIMITIVES SHOWCASE (SYNCDEMO) === "             );
     video_puts(  3, 0, 0x07, "Primitives: Manual/auto events | Priority-inherited mutex | Semaphores | CondVar" );

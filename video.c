@@ -131,16 +131,20 @@ void MT_API video_putu32( int const row, int const col, unsigned char const attr
 /*---------------------------------------------------------------------------*
  * video_ruler() - Draw a ruler on the screen
  *---------------------------------------------------------------------------*/
-void MT_API video_ruler( void ) {
+void MT_API video_ruler( unsigned char horiz_bkgr_attr, unsigned char vert_bkgr_attr ) {
+    unsigned char const h          = horiz_bkgr_attr & 0x07;
+    unsigned char const v          =  vert_bkgr_attr & 0x07;
+    unsigned char const horiz_attr = (unsigned char) ( ( h << 4 ) | ( h | 8 ) );
+    unsigned char const  vert_attr = (unsigned char) ( ( v << 4 ) | ( v | 8 ) );
     int row;
     int col;
 
     for ( row = 0; row < 25; ++row ) {
         for ( col = 0; col < 80; col += 10 ) {
-            video_puts( row, col, 0x4C, "0123456789" );
+            video_puts( row, col, horiz_attr, "0123456789" );
         }
 
-        video_putc( row, 0, 0x5D, (unsigned char) ( ( row / 10 ) + '0' ) );
-        video_putc( row, 1, 0x5D, (unsigned char) ( ( row % 10 ) + '0' ) );
+        video_putc( row, 0, vert_attr, (unsigned char) ( ( row / 10 ) + '0' ) );
+        video_putc( row, 1, vert_attr, (unsigned char) ( ( row % 10 ) + '0' ) );
     }
 }

@@ -245,7 +245,7 @@ int main( void ) {
     video_init( );
     video_clear( 0x07 );
 #if defined RULER
-    video_ruler( );
+    video_ruler( 1, 3 );
 #endif
     video_puts(  1, 5, 0x1F, " === MS-DOS 8086 C++ SYNCHRONIZATION PRIMITIVES SHOWCASE (CPPSYNC) === "          );
     video_puts(  3, 0, 0x07, "Primitives: MEvent | MMutex + MLockGuard (PI) | MSemaphore | MCondVar"            );
