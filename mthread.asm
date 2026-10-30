@@ -2285,4 +2285,29 @@ cv_bcast_done:
     ret
 cond_broadcast ENDP
 
+;-----------------------------------------------------------------------------
+; int MT_API cmp_xchg(int *valueptr, int old_val, int new_val)
+; Atomically compares *valueptr with old_val; if equal, stores new_val and
+; returns 1, otherwise leaves *valueptr unchanged and returns 0.
+;-----------------------------------------------------------------------------
+cmp_xchg PROC PUBLIC USES di, valueptr: DATA_PTR, old_val: WORD, new_val: WORD
+    LOAD_DATA_PTR di, valueptr
+    pushf
+    cli
+    mov ax, old_val
+    cmp es:[di], ax
+    jne SHORT cmp_xchg_fail
+    mov ax, new_val
+    mov es:[di], ax
+    mov ax, 1
+    jmp SHORT cmp_xchg_done
+
+cmp_xchg_fail:
+    xor ax, ax
+
+cmp_xchg_done:
+    popf
+    ret
+cmp_xchg ENDP
+
 END

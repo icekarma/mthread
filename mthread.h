@@ -124,6 +124,9 @@ void MT_API cond_wait( mt_cond_t* cv, mt_mutex_t* mtx );
 void MT_API cond_signal( mt_cond_t* cv );
 void MT_API cond_broadcast( mt_cond_t* cv );
 
+/* 5. Atomic operations */
+int MT_API cmp_xchg( int* valueptr, int const old_val, int const new_val );
+
 #if defined __cplusplus
 }
 #endif
