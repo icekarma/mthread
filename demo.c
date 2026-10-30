@@ -140,7 +140,7 @@ static void MT_API disk_logger_worker( void* arg ) {
 /*---------------------------------------------------------------------------
  * Print Usage Information
  *---------------------------------------------------------------------------*/
-void print_usage( int exit_code ) {
+static void print_usage( int exit_code ) {
     puts(
         "Usage: demo [--burn <count>]\n"
         "  --burn <count>  Set CPU-bound work iterations (default: 8192)"
@@ -219,7 +219,7 @@ int main( int argc, char* argv[] ) {
     while ( g_running ) {
         if ( _kbhit( ) ) {
             int ch = _getch( );
-            if ( ch == 27 || ch == 'q' || ch == 'Q' ) {
+            if ( ( ch == 27 ) || ( ch == 'q' ) || ( ch == 'Q' ) ) {
                 g_running = 0;
                 break;
             }

@@ -69,7 +69,7 @@ void MT_API video_clear( unsigned char const attr ) {
  * video_putc() - Write character to screen at specified row/col with attribute
  *---------------------------------------------------------------------------*/
 void MT_API video_putc( int const row, int const col, unsigned char const attr, unsigned char const c ) {
-    vram[get_offset( row, col )] = (unsigned int) ( attr << 8 ) | (unsigned char) c;
+    vram[get_offset( row, col )] = ( (unsigned int) attr << 8u ) | (unsigned int) c;
 }
 
 /*---------------------------------------------------------------------------*
