@@ -41,7 +41,7 @@ kbd_dgroup_seg  DW  0
 old_int09       DD  0
 
 ;-----------------------------------------------------------------------------
-; isr_int09 - Hardware Keyboard Interrupt Handler (IRQ1 / INT 09h)
+; isr_int09 - Hardware keyboard interrupt handler (IRQ1 / INT 09h)
 ;-----------------------------------------------------------------------------
 isr_int09 PROC FAR
     push ax
@@ -187,7 +187,7 @@ kbd_available ENDP
 
 ;-----------------------------------------------------------------------------
 ; unsigned int MT_API kbd_getkey(void)
-; Non-blocking: returns 16-bit key (AL=ASCII, AH=Scan) or 0 if buffer empty.
+; Non-blocking: returns 16-bit key (AL=ASCII, AH=scan) or 0 if buffer empty.
 ;-----------------------------------------------------------------------------
 kbd_getkey PROC PUBLIC
     push es

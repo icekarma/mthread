@@ -1,5 +1,5 @@
 ;=============================================================================
-; MOUSE.ASM - Interrupt-Driven Mouse Handler (INT 33h) for MTHREAD
+; MOUSE.ASM - Interrupt-driven mouse handler (INT 33h) for MTHREAD
 ;=============================================================================
 
 ifndef MODEL_NAME
@@ -60,7 +60,7 @@ mouse_active    DB  0
 mouse_dgroup    DW  0
 
 ;-----------------------------------------------------------------------------
-; mouse_callback - Invoked via FAR CALL by DOS Mouse Driver at IRQ time
+; mouse_callback - Invoked via far call by mouse driver at IRQ time
 ; Entry: AX = event mask, BX = button state, CX = virtual X, DX = virtual Y
 ;-----------------------------------------------------------------------------
 mouse_callback PROC FAR
@@ -89,7 +89,7 @@ mouse_callback PROC FAR
     SHR_IMM si, 3                   ; col = CX / 8
     mov  di, dx
     SHR_IMM di, 3                   ; row = DX / 8
-    mov   ax, si
+    mov  ax, si
     mov  mouse_live.mev_col, al
     mov  ax, di
     mov  mouse_live.mev_row, al
@@ -99,7 +99,7 @@ mouse_callback PROC FAR
 
     ; 2. Coalesce consecutive pure MOUSE_EVT_MOVE events at the queue tail
     cmp  ax, MOUSE_EVT_MOVE
-    jne   check_queue_full
+    jne  check_queue_full
     cmp  mouse_q_count, 0
     je   alloc_queue_slot
 
