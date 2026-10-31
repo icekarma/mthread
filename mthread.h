@@ -76,6 +76,12 @@ tid_t         MT_API thread_self( void );
 unsigned char MT_API thread_get_priority( tid_t tid );
 int           MT_API thread_set_priority( tid_t tid, unsigned char new_prio );
 
+/* ISR entry/exit for incrementing/decrementing bios_lock from external
+ * hardware ISRs & callbacks
+ */
+void          MT_API mt_enter_isr( void );
+void          MT_API mt_leave_isr( void );
+
 /*===========================================================================
  * Synchronization primitives (events, mutexes, semaphores, condition vars)
  *===========================================================================*/
@@ -90,6 +96,7 @@ typedef struct {
 
 void MT_API event_init( mt_event_t* ev, unsigned char manual_reset, unsigned char initial_state );
 void MT_API event_set( mt_event_t* ev );
+void MT_API event_set_isr( mt_event_t* ev );
 void MT_API event_reset( mt_event_t* ev );
 void MT_API event_pulse( mt_event_t* ev );
 void MT_API event_wait( mt_event_t* ev );

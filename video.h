@@ -13,7 +13,9 @@ void MT_API video_init( void );
 
 void MT_API video_clear( unsigned char const attr );
 void MT_API video_putc( int const row, int const col, unsigned char const attr, unsigned char const c );
+void MT_API video_puthex8( int const row, int const col, unsigned char const attr, unsigned char const val );
 void MT_API video_puts( int const row, int const col, unsigned char const attr, const char* s );
+void MT_API video_putu8( int const row, int const col, unsigned char const attr, unsigned char const val );
 void MT_API video_putu16( int const row, int const col, unsigned char const attr, unsigned int const val );
 void MT_API video_putu32( int const row, int const col, unsigned char const attr, unsigned long const val );
 void MT_API video_ruler( unsigned char horiz_bkgr_attr, unsigned char vert_bkgr_attr );

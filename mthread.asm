@@ -108,12 +108,17 @@ old_int67       DD  0                   ; Saved LIM EMS Driver (if non-null)
 ; isr_timer (INT 08h hardware timer handler)
 ;-----------------------------------------------------------------------------
 isr_timer PROC FAR
-    ; 1. Did this interrupt wake us from the built-in HLT idle loop?
+    ; 1. Failsafe if fired before init finishes
     cmp  cs:[dgroup_seg], 0
-    jne  skip                       ; Failsafe if fired before init finishes
+    jne  skip
     jmp  DWORD PTR cs:[old_int08]
 
 skip:
+    ; If preemption is locked (inside BIOS call, INT 09h, or mouse callback),
+    ; tick PIT and sleepers on the current stack without switching contexts.
+    cmp  cs:[bios_lock], 0
+    jne  timer_locked_tick
+
     mov  cs:[scratch_ds], ds
     mov  cs:[scratch_bx], bx
     mov  ds, cs:[dgroup_seg]
@@ -146,7 +151,7 @@ skip:
 
     ; If thread was RUNNING, mark it READY so the round-robin scan considers it
     cmp  [bx].TCB.tcb_state, STATE_RUNNING
-    jne   switch_to_isr_stk
+    jne  switch_to_isr_stk
     mov  [bx].TCB.tcb_state, STATE_READY
     jmp  SHORT switch_to_isr_stk
 
@@ -180,7 +185,7 @@ tick_sleepers:
     mov  cx, MAX_THREADS
 sleep_scan_loop:
     cmp  [bx].TCB.tcb_state, STATE_SLEEPING
-    jne   sleep_next
+    jne  sleep_next
     dec  [bx].TCB.sleep_ticks
     jnz  sleep_next
     mov  [bx].TCB.tcb_state, STATE_READY
@@ -188,12 +193,49 @@ sleep_next:
     add  bx, SIZEOF TCB
     loop sleep_scan_loop
 
-    ; 5. Check if preemption is temporarily locked (e.g., inside BIOS call)
-    cmp  cs:[bios_lock], 0
-    jne  resume_current_thread
-
     ; Fall through into the priority-based round-robin scheduler!
     jmp  SHORT schedule_next_thread
+
+    ; --- Fast path when INT 08h nests inside a BIOS/ISR critical section ---
+timer_locked_tick:
+    push ds
+    push ax
+    push bx
+    push cx
+    mov  ds, cs:[dgroup_seg]
+
+    dec  pit_sub_count
+    jz   locked_bios_chain
+
+    mov  al, 60h
+    out  20h, al
+    jmp  SHORT locked_tick_sleepers
+
+locked_bios_chain:
+    mov  al, pit_sub_reload
+    mov  pit_sub_count, al
+    pushf
+    call DWORD PTR cs:[old_int08]
+    cli
+
+locked_tick_sleepers:
+    mov  bx, OFFSET tcb_table
+    mov  cx, MAX_THREADS
+locked_sleep_loop:
+    cmp  [bx].TCB.tcb_state, STATE_SLEEPING
+    jne  locked_sleep_next
+    dec  [bx].TCB.sleep_ticks
+    jnz  locked_sleep_next
+    mov  [bx].TCB.tcb_state, STATE_READY
+locked_sleep_next:
+    add  bx, SIZEOF TCB
+    loop locked_sleep_loop
+
+    pop  cx
+    pop  bx
+    pop  ax
+    pop  ds
+    iret
 isr_timer ENDP
 
 ;-----------------------------------------------------------------------------
@@ -291,7 +333,8 @@ enter_idle_hlt:
 idle_hlt_spin:
     sti
     hlt
-    jmp  SHORT idle_hlt_spin
+    cli
+    jmp  schedule_next_thread
 
 ;-----------------------------------------------------------------------------
 ; swap_sda_headers - 24-byte SDA header micro-swap & 400-byte IOStack exchange
@@ -1818,6 +1861,24 @@ no_preempt_needed:
     ret
 preempt_if_higher ENDP
 
+;-----------------------------------------------------------------------------
+; void MT_API mt_enter_isr(void)
+; Increments bios_lock from external hardware ISRs & callbacks.
+;-----------------------------------------------------------------------------
+mt_enter_isr PROC PUBLIC
+    inc  cs:[bios_lock]
+    ret
+mt_enter_isr ENDP
+
+;-----------------------------------------------------------------------------
+; void MT_API mt_leave_isr(void)
+; Decrements bios_lock from external hardware ISRs & callbacks.
+;-----------------------------------------------------------------------------
+mt_leave_isr PROC PUBLIC
+    dec  cs:[bios_lock]
+    ret
+mt_leave_isr ENDP
+
 ;=============================================================================
 ; 1. WIN32 EVENT OBJECT API (event_init, event_set, event_reset, event_pulse, event_wait)
 ;=============================================================================
@@ -1881,6 +1942,45 @@ ev_no_waiters:
     popf
     ret
 event_set ENDP
+
+;-----------------------------------------------------------------------------
+; void MT_API event_set_isr(mt_event_t *ev)
+; Safe to call from hardware ISRs (e.g., INT 09h) and far callbacks (e.g., INT 33h).
+; Wakes waiter(s) or latches ev_signaled without context-switching.
+;-----------------------------------------------------------------------------
+event_set_isr PROC PUBLIC USES si di ds, ev: DATA_PTR
+    mov  ds, cs:[dgroup_seg]
+    LOAD_DATA_PTR di, ev
+
+    pushf
+    cli
+    mov  al, es:[di].MT_EVENT.ev_wait_mask
+    or   al, al
+    jz   ev_isr_no_waiters
+
+    cmp  es:[di].MT_EVENT.ev_manual, 0
+    jne  ev_isr_wake_all
+
+    ; Auto-reset event with waiters: wake highest-priority waiter directly,
+    ; leave ev_signaled = 0 (direct signal handoff)
+    call wake_highest_waiter
+    mov  es:[di].MT_EVENT.ev_wait_mask, al
+    popf
+    ret
+
+ev_isr_wake_all:
+    ; Manual-reset event: set signaled = 1 and wake ALL waiting threads
+    mov  es:[di].MT_EVENT.ev_signaled, 1
+    mov  es:[di].MT_EVENT.ev_wait_mask, 0
+    call wake_all_waiters
+    popf
+    ret
+
+ev_isr_no_waiters:
+    mov  es:[di].MT_EVENT.ev_signaled, 1
+    popf
+    ret
+event_set_isr ENDP
 
 event_reset PROC PUBLIC USES di, ev: DATA_PTR
     LOAD_DATA_PTR di, ev

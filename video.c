@@ -9,6 +9,8 @@ static unsigned int  far*              const bios_cur_page_offset = (unsigned in
 static unsigned char far*              const bios_screen_rows     = (unsigned char far*) 0x00000484L;
 static __segment                       const vram_seg             = 0xB800;
 
+static char                            const hex_digits[]         = "0123456789ABCDEF";
+
 /*===========================================================================*
 * Private variables
 *===========================================================================*/
@@ -73,6 +75,14 @@ void MT_API video_putc( int const row, int const col, unsigned char const attr, 
 }
 
 /*---------------------------------------------------------------------------*
+* video_puthex8() - Write unsigned 8-bit integer to screen in hex at specified row/col
+*---------------------------------------------------------------------------*/
+void MT_API video_puthex8( int const row, int const col, unsigned char const attr, unsigned char const val ) {
+    video_putc( row, col,     attr, (unsigned char) hex_digits[( val >> 4 ) & 0x0F] );
+    video_putc( row, col + 1, attr, (unsigned char) hex_digits[  val        & 0x0F] );
+}
+
+/*---------------------------------------------------------------------------*
  * video_puts() - Write null-terminated string to screen at specified row/col
  *---------------------------------------------------------------------------*/
 void MT_API video_puts( int const row, int const col, unsigned char const attr, const char* s ) {
@@ -82,6 +92,14 @@ void MT_API video_puts( int const row, int const col, unsigned char const attr, 
     while ( *s ) {
         vram[offset++] = hi | (unsigned char) *s++;
     }
+}
+
+/*---------------------------------------------------------------------------*
+* video_putu8() - Write unsigned 8-bit integer to screen at specified row/col
+*---------------------------------------------------------------------------*/
+void MT_API video_putu8( int const row, int const col, unsigned char const attr, unsigned char const val ) {
+    video_putc( row, col,     attr, (unsigned char) ( ( val >= 10 ) ? ( '0' + ( val / 10 ) ) : ' ' ) );
+    video_putc( row, col + 1, attr, (unsigned char) ( '0' + ( val % 10 ) ) );
 }
 
 /*---------------------------------------------------------------------------*

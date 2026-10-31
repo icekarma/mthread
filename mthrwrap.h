@@ -177,7 +177,7 @@ public:
     }
 
     tid_t GetTid( ) const {
-        return tid;
+        return ( tid != MT_NO_THREAD ) ? tid : thread_self( );
     }
 
     unsigned char GetPriority( ) const {
@@ -238,12 +238,16 @@ class MEvent {
 
 public:
 
-    MEvent( unsigned char manual_reset, unsigned char initial_state ) {
+    MEvent( unsigned char manual_reset = 0, unsigned char initial_state = 0 ) {
         event_init( &ev, manual_reset, initial_state );
     }
 
     void Set( ) {
         event_set( &ev );
+    }
+
+    void SetIsr( ) {
+        event_set_isr( &ev );
     }
 
     void Reset( ) {
@@ -256,6 +260,10 @@ public:
 
     void Wait( ) {
         event_wait( &ev );
+    }
+
+    mt_event_t* GetHandle( ) {
+        return &ev;
     }
 
 private:

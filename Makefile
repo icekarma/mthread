@@ -73,7 +73,7 @@ LIB_CMD  = wlib -q -b -n
 !ENDIF
 
 # --- 4. Build Targets ---
-TARGETS = mthread.lib vid.lib demo.exe syncdemo.exe cppdemo.exe cppsync.exe
+TARGETS = mthread.lib vid.lib input.lib demo.exe inpdemo.exe syncdemo.exe cppdemo.exe cppinp.exe cppsync.exe
 
 all: cls $(TARGETS)
 
@@ -113,11 +113,31 @@ vid.lib: video.obj videohlp.obj
 	$(LIB_CMD) vid.lib +video.obj +videohlp.obj
 !ENDIF
 
+kbd.obj: kbd.asm mthread.inc
+	$(AS) $(AFLAGS) kbd.asm
+
+mouse.obj: mouse.asm mthread.inc
+	$(AS) $(AFLAGS) mouse.asm
+
+input.lib: kbd.obj mouse.obj
+	-if exist input.lib del input.lib
+!IF "$(COMPILER)" == "MSC"
+	$(LIB_CMD) input.lib +kbd.obj +mouse.obj;
+!ELSE
+	$(LIB_CMD) input.lib +kbd.obj +mouse.obj
+!ENDIF
+
 demo.obj: demo.c mthread.h video.h
 	$(CC) $(CFLAGS) demo.c
 
 demo.exe: demo.obj mthread.lib vid.lib
 	$(LINK_CMD) demo.obj mthread.lib vid.lib
+
+inpdemo.obj: inpdemo.c mthread.h input.h video.h
+	$(CC) $(CFLAGS) inpdemo.c
+
+inpdemo.exe: inpdemo.obj mthread.lib vid.lib input.lib
+	$(LINK_CMD) inpdemo.obj mthread.lib vid.lib input.lib
 
 syncdemo.obj: syncdemo.c mthread.h video.h
 	$(CC) $(CFLAGS) syncdemo.c
@@ -130,6 +150,12 @@ cppdemo.obj: cppdemo.cpp mthread.h mthrwrap.h video.h
 
 cppdemo.exe: cppdemo.obj mthread.lib vid.lib
 	$(LINK_CMD) cppdemo.obj mthread.lib vid.lib
+
+cppinp.obj: cppinp.cpp mthread.h mthrwrap.h input.h video.h
+	$(CC) $(CFLAGS) cppinp.cpp
+
+cppinp.exe: cppinp.obj mthread.lib vid.lib input.lib
+	$(LINK_CMD) cppinp.obj mthread.lib vid.lib input.lib
 
 cppsync.obj: cppsync.cpp mthread.h mthrwrap.h video.h
 	$(CC) $(CFLAGS) cppsync.cpp
