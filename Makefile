@@ -3,6 +3,8 @@
 #
 # Usage Examples:
 #   nmake                                  (Defaults: MSC, SMALL, 8086)
+#   nmake MODEL=TINY                       (MSC 7.00, Tiny model .COM files)
+#   nmake MODEL=HUGE CPU=186               (MSC 7.00, Huge model, 80186+)
 #   nmake MODEL=LARGE CPU=186              (MSC 7.00, Large model, 80186+)
 #   nmake COMPILER=BCC MODEL=COMPACT       (Borland C++ 3.1 + TASM 4.1)
 #   nmake COMPILER=WATCOM MODEL=SMALL      (OpenWatcom C/C++ + MASM 6.11)
@@ -15,7 +17,12 @@ MODEL    = SMALL
 CPU      = 8086
 
 # --- 1. Map memory model to compiler short codes & output extension ---
-!IF "$(MODEL)" == "SMALL"
+EXT = exe
+!IF "$(MODEL)" == "TINY"
+MCODE_UPPER = T
+MCODE_LOWER = t
+EXT         = com
+!ELSEIF "$(MODEL)" == "SMALL"
 MCODE_UPPER = S
 MCODE_LOWER = s
 !ELSEIF "$(MODEL)" == "MEDIUM"
@@ -27,8 +34,11 @@ MCODE_LOWER = c
 !ELSEIF "$(MODEL)" == "LARGE"
 MCODE_UPPER = L
 MCODE_LOWER = l
+!ELSEIF "$(MODEL)" == "HUGE"
+MCODE_UPPER = H
+MCODE_LOWER = h
 !ELSE
-!ERROR Invalid MODEL="$(MODEL)". Choose SMALL, MEDIUM, COMPACT, or LARGE.
+!ERROR Invalid MODEL="$(MODEL)". Choose TINY, SMALL, MEDIUM, COMPACT, LARGE, or HUGE.
 !ENDIF
 
 # --- 2. Map CPU option (8086 vs 186) ---
@@ -48,10 +58,15 @@ WAT_CPU_FLAGS = -0
 
 # --- 3. Configure toolchain commands & flags ---
 !IF "$(COMPILER)" == "MSC"
+!IF "$(MODEL)" == "TINY"
+MSC_DBG  =
+!ELSE
+MSC_DBG  = /Zi
+!ENDIF
 CC       = cl
 AS       = ml
-CFLAGS   = /c /A$(MCODE_UPPER) $(MSC_CPU_FLAGS) /Gy /Ox /W3 /Zi /nologo
-AFLAGS   = /c /W2 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) /Zi /nologo
+CFLAGS   = /c /A$(MCODE_UPPER) $(MSC_CPU_FLAGS) /Gy /Ox /W3 $(MSC_DBG) /nologo
+AFLAGS   = /c /W2 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) $(MSC_DBG) /nologo
 LINK_CMD = $(CC) /A$(MCODE_UPPER) $(MSC_CPU_FLAGS) /nologo
 LIB_CMD  = lib /nologo
 !ELSEIF "$(COMPILER)" == "BCC"
@@ -73,7 +88,9 @@ LIB_CMD  = wlib -q -b -n
 !ENDIF
 
 # --- 4. Build targets ---
-TARGETS = mthread.lib vid.lib input.lib demo.exe inpdemo.exe syncdemo.exe cppdemo.exe cppinp.exe cppsync.exe
+LIBS    = mthread.lib vid.lib input.lib
+DEMOS   = demo.$(EXT) inpdemo.$(EXT) syncdemo.$(EXT) cppdemo.$(EXT) cppinp.$(EXT) cppsync.$(EXT)
+TARGETS = $(LIBS) $(DEMOS)
 
 all: cls $(TARGETS)
 
@@ -85,7 +102,7 @@ cls:
 	@echo Target CPU:   $(CPU)
 	@echo.
 
-mthread.obj: mthread.asm mthread.inc mthread.h
+mthread.obj: mthread.asm mthread.inc
 	$(AS) $(AFLAGS) mthread.asm
 
 mthrwrap.obj: mthrwrap.cpp mthread.h mthrwrap.h
@@ -99,7 +116,7 @@ mthread.lib: mthread.obj mthrwrap.obj
 	$(LIB_CMD) mthread.lib +mthread.obj +mthrwrap.obj
 !ENDIF
 
-videohlp.obj: videohlp.asm
+videohlp.obj: videohlp.asm mthread.inc
 	$(AS) $(AFLAGS) /DOFFSET_DISPLAY videohlp.asm
 
 video.obj: video.c video.h
@@ -130,42 +147,43 @@ input.lib: kbd.obj mouse.obj
 demo.obj: demo.c mthread.h video.h
 	$(CC) $(CFLAGS) demo.c
 
-demo.exe: demo.obj mthread.lib vid.lib
+demo.$(EXT): demo.obj mthread.lib vid.lib
 	$(LINK_CMD) demo.obj mthread.lib vid.lib
 
 inpdemo.obj: inpdemo.c mthread.h input.h video.h
 	$(CC) $(CFLAGS) inpdemo.c
 
-inpdemo.exe: inpdemo.obj mthread.lib vid.lib input.lib
+inpdemo.$(EXT): inpdemo.obj mthread.lib vid.lib input.lib
 	$(LINK_CMD) inpdemo.obj mthread.lib vid.lib input.lib
 
 syncdemo.obj: syncdemo.c mthread.h video.h
 	$(CC) $(CFLAGS) syncdemo.c
 
-syncdemo.exe: syncdemo.obj mthread.lib vid.lib
+syncdemo.$(EXT): syncdemo.obj mthread.lib vid.lib
 	$(LINK_CMD) syncdemo.obj mthread.lib vid.lib
 
 cppdemo.obj: cppdemo.cpp mthread.h mthrwrap.h video.h
 	$(CC) $(CFLAGS) cppdemo.cpp
 
-cppdemo.exe: cppdemo.obj mthread.lib vid.lib
+cppdemo.$(EXT): cppdemo.obj mthread.lib vid.lib
 	$(LINK_CMD) cppdemo.obj mthread.lib vid.lib
 
 cppinp.obj: cppinp.cpp mthread.h mthrwrap.h input.h video.h
 	$(CC) $(CFLAGS) cppinp.cpp
 
-cppinp.exe: cppinp.obj mthread.lib vid.lib input.lib
+cppinp.$(EXT): cppinp.obj mthread.lib vid.lib input.lib
 	$(LINK_CMD) cppinp.obj mthread.lib vid.lib input.lib
 
 cppsync.obj: cppsync.cpp mthread.h mthrwrap.h video.h
 	$(CC) $(CFLAGS) cppsync.cpp
 
-cppsync.exe: cppsync.obj mthread.lib vid.lib
+cppsync.$(EXT): cppsync.obj mthread.lib vid.lib
 	$(LINK_CMD) cppsync.obj mthread.lib vid.lib
 
 clean:
 	-if exist *.obj del *.obj
 	-if exist *.exe del *.exe
+	-if exist *.com del *.com
 	-if exist *.lib del *.lib
 	-if exist *.map del *.map
 	-if exist *.bak del *.bak

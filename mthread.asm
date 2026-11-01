@@ -1091,8 +1091,7 @@ unhook_hardware ENDP
 ; void MT_API thread_init(unsigned char pit_shift, unsigned char main_prio)
 ;-----------------------------------------------------------------------------
 thread_init PROC PUBLIC USES si di ds, pit_shift: BYTE, main_prio: BYTE
-    mov  ax, @data
-    mov  ds, ax
+    LOAD_DS_DGROUP
     mov  cs:[dgroup_seg], ax
 
     ; 1. Register thread_abort with C runtime atexit() once
@@ -1257,8 +1256,7 @@ thread_init ENDP
 ; Idempotent emergency/atexit shutdown: unhooks PIT and all interrupt vectors.
 ;-----------------------------------------------------------------------------
 thread_abort PROC PUBLIC USES ds
-    mov  ax, @data
-    mov  ds, ax
+    LOAD_DS_DGROUP
     call unhook_hardware
     ret
 thread_abort ENDP
@@ -1267,8 +1265,7 @@ thread_abort ENDP
 ; void MT_API thread_shutdown(void)
 ;-----------------------------------------------------------------------------
 thread_shutdown PROC PUBLIC USES si di ds
-    mov  ax, @data
-    mov  ds, ax
+    LOAD_DS_DGROUP
     call unhook_hardware
     call reap_zombie_stacks
     ret
@@ -1348,12 +1345,8 @@ reap_zombie_stacks ENDP
 ;                            void *stack_ptr, unsigned int stack_size,
 ;                            unsigned char priority)
 ;-----------------------------------------------------------------------------
-thread_create PROC PUBLIC USES si di ds,
-    func:CODE_PTR, arg:DATA_PTR, stack_ptr:DATA_PTR,
-    stack_size:WORD, priority:BYTE
-
-    mov  ax, @data
-    mov  ds, ax
+thread_create PROC PUBLIC USES si di ds, func: CODE_PTR, arg: DATA_PTR, stack_ptr: DATA_PTR, stack_size: WORD, priority: BYTE
+    LOAD_DS_DGROUP
 
     ; 1. Reclaim any exited STATE_ZOMBIE stacks first
     call reap_zombie_stacks
@@ -1430,6 +1423,12 @@ resolve_stack_ptr:
 
     ; 5. Compute stack bottom guard (STKHQQ value) & aligned stack top
     ;    AX = base offset, DX = stack segment
+    ;    In HUGE model (@DataSize == 2), normalize DX:AX so stack_size
+    ;    addition cannot wrap a 64 KB segment boundary (stk_alloc_seg:off
+    ;    was already latched above so free() receives the raw malloc ptr).
+    IF @DataSize EQ 2
+        NORMALIZE_FAR_PTR dx, ax, cx
+    ENDIF
     mov  cx, ax
     add  cx, STACK_GUARD_MARGIN
     mov  [si].TCB.stk_limit, cx

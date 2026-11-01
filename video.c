@@ -15,17 +15,17 @@ static char                            const hex_digits[]         = "0123456789A
 * Private variables
 *===========================================================================*/
 
-static unsigned int __based(vram_seg)*       vram;
+static unsigned int __based(vram_seg)*       vram                 = 0;
 
-static unsigned int                          screen_cols;
-static unsigned int                          screen_rows;
+static unsigned int                          screen_cols          = 80;
+static unsigned int                          screen_rows          = 25;
 
 /*===========================================================================*
 * Semiprivate variables
 *===========================================================================*/
 
-unsigned int                                 row_offset;
-unsigned int                                 col_offset;
+unsigned int                                 row_offset           = 0;
+unsigned int                                 col_offset           = 0;
 
 /*===========================================================================*
 * Private functions

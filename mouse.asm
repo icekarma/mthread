@@ -190,8 +190,7 @@ mouse_callback ENDP
 ; Returns button count (2 or 3) if initialized, or 0 if no mouse driver.
 ;-----------------------------------------------------------------------------
 mouse_init PROC PUBLIC USES si di ds, notify_ev: DATA_PTR, event_mask: WORD
-    mov  ax, @data
-    mov  ds, ax
+    LOAD_DS_DGROUP
     mov  cs:[mouse_dgroup], ax
 
     ; 1. Verify INT 33h vector is non-null and not pointing to a bare IRET
@@ -222,6 +221,9 @@ save_notify_ptr:
     IF @DataSize
         mov  ax, WORD PTR notify_ev
         mov  dx, WORD PTR notify_ev+2
+        IF @DataSize EQ 2
+            NORMALIZE_FAR_PTR dx, ax, cx
+        ENDIF
     ELSE
         mov  ax, notify_ev
         mov  dx, ds
@@ -272,8 +274,7 @@ mouse_init ENDP
 ; void MT_API mouse_shutdown(void)
 ;-----------------------------------------------------------------------------
 mouse_shutdown PROC PUBLIC USES ds
-    mov  ax, @data
-    mov  ds, ax
+    LOAD_DS_DGROUP
 
     cmp  mouse_active, 0
     je   mouse_shut_done
@@ -307,8 +308,7 @@ mouse_shutdown ENDP
 ; void MT_API mouse_show(void)
 ;-----------------------------------------------------------------------------
 mouse_show PROC PUBLIC USES ds
-    mov  ax, @data
-    mov  ds, ax
+    LOAD_DS_DGROUP
     cmp  mouse_active, 0
     je   skip_show
     mov  ax, 0001h
@@ -321,8 +321,7 @@ mouse_show ENDP
 ; void MT_API mouse_hide(void)
 ;-----------------------------------------------------------------------------
 mouse_hide PROC PUBLIC USES ds
-    mov  ax, @data
-    mov  ds, ax
+    LOAD_DS_DGROUP
     cmp  mouse_active, 0
     je   skip_hide
     mov  ax, 0002h
@@ -335,8 +334,7 @@ mouse_hide ENDP
 ; void MT_API mouse_set_pos(unsigned char row, unsigned char col)
 ;-----------------------------------------------------------------------------
 mouse_set_pos PROC PUBLIC USES ds, row: BYTE, col: BYTE
-    mov  ax, @data
-    mov  ds, ax
+    LOAD_DS_DGROUP
     cmp  mouse_active, 0
     je   skip_set_pos
 
@@ -358,8 +356,7 @@ mouse_set_pos ENDP
 ; int MT_API mouse_available(void)
 ;-----------------------------------------------------------------------------
 mouse_available PROC PUBLIC USES ds
-    mov  ax, @data
-    mov  ds, ax
+    LOAD_DS_DGROUP
     xor  ax, ax
     cmp  mouse_q_count, 0
     je   no_m_ev
@@ -372,8 +369,7 @@ mouse_available ENDP
 ; int MT_API mouse_get_event(mouse_event_t *out_ev)
 ;-----------------------------------------------------------------------------
 mouse_get_event PROC PUBLIC USES si di ds, out_ev: DATA_PTR
-    mov  ax, @data
-    mov  ds, ax
+    LOAD_DS_DGROUP
     LOAD_DATA_PTR di, out_ev
 
     pushf
@@ -413,8 +409,7 @@ mouse_get_event ENDP
 ; void MT_API mouse_get_state(mouse_event_t *out_state)
 ;-----------------------------------------------------------------------------
 mouse_get_state PROC PUBLIC USES si di ds, out_state: DATA_PTR
-    mov  ax, @data
-    mov  ds, ax
+    LOAD_DS_DGROUP
     LOAD_DATA_PTR di, out_state
 
     pushf

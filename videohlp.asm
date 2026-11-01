@@ -8,6 +8,14 @@ endif
 
 .MODEL MODEL_NAME, C
 
+IFDEF USE_186
+    .186
+ELSE
+    .8086
+ENDIF
+
+INCLUDE mthread.inc
+
 ifdef OFFSET_DISPLAY
     .DATA
 
@@ -21,12 +29,16 @@ endif
 ; void MT_API video_gotoxy(unsigned char row, unsigned char col)
 ; Moves the text-mode cursor to 0-based (row, col) on the current display page
 ;-----------------------------------------------------------------------------
-video_gotoxy PROC PUBLIC, row: BYTE, col: BYTE
+video_gotoxy PROC PUBLIC USES ds, row: BYTE, col: BYTE
     push es
     xor  ax, ax
     mov  es, ax
     mov  bh, es:[0462h]            ; Load current active display page (0..7)
     pop  es
+
+ifdef OFFSET_DISPLAY
+    LOAD_DS_DGROUP
+endif
 
     mov  ah, 02h                   ; BIOS Set Cursor Position
     mov  dh, row                   ; Load 0-based row

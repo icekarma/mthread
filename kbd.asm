@@ -111,8 +111,7 @@ isr_int09 ENDP
 ; void MT_API kbd_init(mt_event_t *notify_ev)
 ;-----------------------------------------------------------------------------
 kbd_init PROC PUBLIC USES ds, notify_ev: DATA_PTR
-    mov  ax, @data
-    mov  ds, ax
+    LOAD_DS_DGROUP
     mov  cs:[kbd_dgroup_seg], ax
 
     cmp  kbd_active, 0
@@ -121,6 +120,9 @@ kbd_init PROC PUBLIC USES ds, notify_ev: DATA_PTR
     IF @DataSize
         mov  ax, WORD PTR notify_ev
         mov  dx, WORD PTR notify_ev+2
+        IF @DataSize EQ 2
+            NORMALIZE_FAR_PTR dx, ax, cx
+        ENDIF
     ELSE
         mov  ax, notify_ev
         mov  dx, ds
@@ -152,8 +154,7 @@ kbd_init ENDP
 ; void MT_API kbd_shutdown(void)
 ;-----------------------------------------------------------------------------
 kbd_shutdown PROC PUBLIC USES ds
-    mov  ax, @data
-    mov  ds, ax
+    LOAD_DS_DGROUP
 
     cmp  kbd_active, 0
     je   kbd_shut_done

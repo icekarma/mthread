@@ -9,11 +9,14 @@ SHL_IMM MACRO dest, count
     IF HAS_186
         shl dest, count
     ELSE
-        IF (count) LE 3
+        IF (count) LE 4
             REPEAT count
                 shl dest, 1
             ENDM
         ELSE
+            IFIDNI <dest>, <cx>
+                .ERR <SHL_IMM cannot use CX as dest with count > 4 on 8086>
+            ENDIF
             push cx
             mov cl, count
             shl dest, cl
@@ -26,11 +29,14 @@ SHR_IMM MACRO dest, count
     IF HAS_186
         shr dest, count
     ELSE
-        IF (count) LE 3
+        IF (count) LE 4
             REPEAT count
                 shr dest, 1
             ENDM
         ELSE
+            IFIDNI <dest>, <cx>
+                .ERR <SHR_IMM cannot use CX as dest with count > 4 on 8086>
+            ENDIF
             push cx
             mov cl, count
             shr dest, cl
@@ -39,7 +45,7 @@ SHR_IMM MACRO dest, count
     ENDIF
 ENDM
 
-; --- 2. Memory model pointer sizes (@CodeSize, @DataSize) ---
+; --- 2. Memory model pointer sizes (@Model, @CodeSize, @DataSize) ---
 IF @CodeSize
     CODE_PTR_SIZE   EQU 4
     far_or_near_code TEXTEQU <FAR>
@@ -58,6 +64,46 @@ ENDIF
 
 CODE_PTR TYPEDEF far_or_near_code PTR
 DATA_PTR TYPEDEF far_or_near_data PTR
+
+; --- Load DS (and AX) with DGROUP without segment fixups in TINY model ---
+LOAD_DS_DGROUP MACRO
+    IF @Model EQ 1
+        mov  ax, cs
+    ELSE
+        mov  ax, @data
+    ENDIF
+    mov  ds, ax
+ENDM
+
+; --- Normalize a far pointer in reg_seg:reg_off (using reg_tmp as scratch) ---
+NORMALIZE_FAR_PTR MACRO reg_seg, reg_off, reg_tmp
+    mov     reg_tmp, reg_off
+    SHR_IMM reg_tmp, 4
+    add     reg_seg, reg_tmp
+    and     reg_off, 000Fh
+ENDM
+
+; --- Load near or far DATA_PTR into ES:reg_off (DS stays DGROUP) ---
+;     In HUGE model (@DataSize == 2), normalizes ES:reg_off so multi-byte
+;     struct accesses never wrap a 64 KB segment boundary.
+LOAD_DATA_PTR MACRO reg_off, ptr_param
+    IF @DataSize
+        les  reg_off, ptr_param
+        IF @DataSize EQ 2
+            push ax
+            push dx
+            mov  dx, es
+            NORMALIZE_FAR_PTR dx, reg_off, ax
+            mov  es, dx
+            pop  dx
+            pop  ax
+        ENDIF
+    ELSE
+        push ds
+        pop  es
+        mov  reg_off, ptr_param
+    ENDIF
+ENDM
 
 ; --- 3. Scheduler & DOS constants ---
 MAX_THREADS         EQU 8
@@ -130,17 +176,6 @@ TCB STRUC
     ; Per-thread 24-byte DOS SDA header snapshot (24 bytes)
     sda_hdr         DB  SDA_HEADER_SIZE DUP (?) ; +28h..3Fh
 TCB ENDS
-
-; --- Load near or far DATA_PTR into ES:reg_off ---
-LOAD_DATA_PTR MACRO reg_off, ptr_param
-    IF @DataSize
-        les  reg_off, ptr_param
-    ELSE
-        push ds
-        pop  es
-        mov  reg_off, ptr_param
-    ENDIF
-ENDM
 
 ; --- Synchronization object structures (matching mthread.h) ---
 MT_EVENT STRUC
