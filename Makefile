@@ -9,12 +9,12 @@
 #   nmake clean
 #=============================================================================
 
-# --- User-Configurable Build Options ---
+# --- User-configurable build options ---
 COMPILER = MSC
 MODEL    = SMALL
 CPU      = 8086
 
-# --- 1. Map Memory Model to Compiler Short Codes ---
+# --- 1. Map memory model to compiler short codes & output extension ---
 !IF "$(MODEL)" == "SMALL"
 MCODE_UPPER = S
 MCODE_LOWER = s
@@ -31,7 +31,7 @@ MCODE_LOWER = l
 !ERROR Invalid MODEL="$(MODEL)". Choose SMALL, MEDIUM, COMPACT, or LARGE.
 !ENDIF
 
-# --- 2. Map CPU Option (8086 vs 186) ---
+# --- 2. Map CPU option (8086 vs 186) ---
 !IF "$(CPU)" == "186"
 ASM_CPU_FLAGS = /DUSE_186
 MSC_CPU_FLAGS = /G1
@@ -46,7 +46,7 @@ WAT_CPU_FLAGS = -0
 !ERROR Invalid CPU="$(CPU)". Choose 8086 or 186.
 !ENDIF
 
-# --- 3. Configure Toolchain Commands & Flags ---
+# --- 3. Configure toolchain commands & flags ---
 !IF "$(COMPILER)" == "MSC"
 CC       = cl
 AS       = ml
@@ -72,7 +72,7 @@ LIB_CMD  = wlib -q -b -n
 !ERROR Invalid COMPILER="$(COMPILER)". Choose MSC, BCC, or WATCOM.
 !ENDIF
 
-# --- 4. Build Targets ---
+# --- 4. Build targets ---
 TARGETS = mthread.lib vid.lib input.lib demo.exe inpdemo.exe syncdemo.exe cppdemo.exe cppinp.exe cppsync.exe
 
 all: cls $(TARGETS)

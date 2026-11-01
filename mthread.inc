@@ -1,8 +1,8 @@
 ;=============================================================================
-; MTHREAD.INC - MASM 6.11 Macros, Model Abstractions & TCB Layout
+; MTHREAD.INC: Preemptive Multithreading Kernel for MS-DOS
 ;=============================================================================
 
-; --- 1. Processor Feature Detection (@Cpu bit 1 = 80186+) ---
+; --- 1. Processor feature detection (@Cpu bit 1 = 80186+) ---
 HAS_186 EQU (@Cpu AND 0002h)
 
 SHL_IMM MACRO dest, count
@@ -39,10 +39,10 @@ SHR_IMM MACRO dest, count
     ENDIF
 ENDM
 
-; --- 2. Memory Model Pointer Sizes (@CodeSize, @DataSize) ---
+; --- 2. Memory model pointer sizes (@CodeSize, @DataSize) ---
 IF @CodeSize
     CODE_PTR_SIZE   EQU 4
-     far_or_near_code TEXTEQU <FAR>
+    far_or_near_code TEXTEQU <FAR>
 ELSE
     CODE_PTR_SIZE   EQU 2
     far_or_near_code TEXTEQU <NEAR>
@@ -59,7 +59,7 @@ ENDIF
 CODE_PTR TYPEDEF far_or_near_code PTR
 DATA_PTR TYPEDEF far_or_near_data PTR
 
-; --- 3. Scheduler & DOS Constants ---
+; --- 3. Scheduler & DOS constants ---
 MAX_THREADS         EQU 8
 NO_THREAD           EQU 0FFh
 DEFAULT_STACK_SIZE  EQU 1024
@@ -71,7 +71,7 @@ SDA_CON_VARS_SIZE   EQU 16          ; Console state vars at SDA+18h..27h
 IOSTACK_SIZE        EQU 384         ; 180h bytes for DOS IOStack
 IOSWAP_BUF_SIZE     EQU (SDA_CON_VARS_SIZE + IOSTACK_SIZE) ; 400 bytes total
 
-; Thread States (tcb_state)
+; Thread states (tcb_state)
 STATE_UNUSED        EQU 0
 STATE_READY         EQU 1
 STATE_RUNNING       EQU 2
@@ -82,27 +82,26 @@ STATE_ZOMBIE        EQU 6           ; Exited; awaiting lazy stack free()
 STATE_WAIT_IO       EQU 7           ; Three-way IOStack contention
 STATE_WAIT_SYNC     EQU 8           ; Blocked on Event, Mutex, Sem, or CondVar
 
-
-; Thread Flags (tcb_flags)
+; Thread flags (tcb_flags)
 TCB_FLG_OWN_STACK   EQU 01h         ; Stack allocated via malloc()
 TCB_FLG_IN_DOS      EQU 02h         ; Thread is currently inside INT 21h
 TCB_FLG_SWAPPED_IO  EQU 04h         ; Thread's IOStack is saved in io_swap_buf
 
-; DOS Internal Stack IDs (dos_stack_id)
+; DOS internal stack IDs (dos_stack_id)
 DOS_STK_NONE        EQU 0
 DOS_STK_IO          EQU 1           ; AH = 01h..0Ch
 DOS_STK_DISK        EQU 2           ; AH >= 0Dh (except 59h)
 DOS_STK_AUX         EQU 3           ; AH = 59h or ErrorMode != 0
 
-; Error Codes (matching mthread.h)
+; Error codes (matching mthread.h)
 MT_ERR_NONE         EQU 00h
 MT_ERR_NO_SLOTS     EQU 0FEh
 MT_ERR_NO_MEMORY    EQU 0FDh
 MT_ERR_INVALID      EQU 0FCh
 
-; --- 4. Thread Control Block (64 Bytes = 40h -> Indexed via SHL_IMM reg, 6) ---
+; --- 4. Thread control block (64 bytes) ---
 TCB STRUC
-    ; Saved 8086 Register Context (28 bytes)
+    ; Saved 8086 register context (28 bytes)
     reg_ax          DW  ?           ; +00h
     reg_bx          DW  ?           ; +02h
     reg_cx          DW  ?           ; +04h
@@ -118,7 +117,7 @@ TCB STRUC
     reg_cs          DW  ?           ; +18h
     reg_flags       DW  ?           ; +1Ah
 
-    ; Scheduler, Priority Inheritance & Stack Metadata (12 bytes)
+    ; Scheduler, priority inheritance & stack metadata (12 bytes)
     tcb_state       DB  ?           ; +1Ch: STATE_*
     tcb_prio        DB  ?           ; +1Dh: Effective priority (0..7)
     tcb_base_prio   DB  ?           ; +1Eh: Base priority (restored after boost)
@@ -128,11 +127,11 @@ TCB STRUC
     stk_alloc_off   DW  ?           ; +24h: Heap offset for free()
     stk_alloc_seg   DW  ?           ; +26h: Heap segment (or dos_stack_id in low byte)
 
-    ; Per-Thread 24-Byte DOS SDA Header Snapshot (24 bytes)
+    ; Per-thread 24-byte DOS SDA header snapshot (24 bytes)
     sda_hdr         DB  SDA_HEADER_SIZE DUP (?) ; +28h..3Fh
 TCB ENDS
 
-; --- Load Near or Far DATA_PTR into ES:reg_off (DS stays DGROUP) ---
+; --- Load near or far DATA_PTR into ES:reg_off ---
 LOAD_DATA_PTR MACRO reg_off, ptr_param
     IF @DataSize
         les  reg_off, ptr_param
@@ -143,7 +142,7 @@ LOAD_DATA_PTR MACRO reg_off, ptr_param
     ENDIF
 ENDM
 
-; --- Synchronization Object Structures (matching mthread.h) ---
+; --- Synchronization object structures (matching mthread.h) ---
 MT_EVENT STRUC
     ev_signaled     DB  ?           ; +00h: 0 or 1
     ev_manual       DB  ?           ; +01h: 0 = Auto-reset, 1 = Manual-reset

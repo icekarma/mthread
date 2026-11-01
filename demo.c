@@ -1,5 +1,5 @@
 /*===========================================================================
- * demo.c - Verification Harness for MTHREAD (MSC 7.00 / MASM 6.11)
+ * demo.c - Test harness for and demonstration of MTHREAD (MSC 7.00 / MASM 6.11)
  *===========================================================================*/
 
 #include <conio.h>
@@ -15,7 +15,7 @@ static volatile int           g_running                    = 1;
 static volatile unsigned int  g_disk_writes                = 0;
 static volatile unsigned long g_iter_count[MT_MAX_THREADS] = { 0, };
 
-/* Caller-supplied static stack for Thread 3 (tests non-malloc stack path) */
+/* Caller-supplied static stack for thread 3 (tests non-malloc stack path) */
 static unsigned char          g_custom_stack[1024];
 
 static const char             g_spinner[]                  = "|/-\\";
@@ -38,7 +38,7 @@ static unsigned int stack_probe_test( unsigned int depth ) {
 }
 
 /*---------------------------------------------------------------------------
- * Worker Thread (TIDs 1 & 2): Normal Priority Preemptive Compute + Sleep
+ * Worker thread (TIDs 1 & 2): normal priority preemptive compute + sleep
  *---------------------------------------------------------------------------*/
 static void MT_API compute_worker( void* arg ) {
     int                   id      = (int) arg;
@@ -78,7 +78,7 @@ static void MT_API compute_worker( void* arg ) {
 }
 
 /*---------------------------------------------------------------------------
- * Background Thread (TID 3): Low-Priority CPU Spinner (never sleeps!)
+ * Background thread (TID 3): low-priority CPU spinner (never sleeps!)
  * Runs ONLY when higher-priority threads are sleeping or blocked.
  *---------------------------------------------------------------------------*/
 static void MT_API low_prio_spinner( void* arg ) {
@@ -103,7 +103,7 @@ static void MT_API low_prio_spinner( void* arg ) {
 }
 
 /*---------------------------------------------------------------------------
- * Disk I/O Thread (TID 4): Exercises INT 21h DiskStack (fopen/fprintf/fclose)
+ * Disk I/O thread (TID 4): exercises INT 21h DiskStack via stdio
  *---------------------------------------------------------------------------*/
 static void MT_API disk_logger_worker( void* arg ) {
     tid_t     self = thread_self( );
@@ -138,7 +138,7 @@ static void MT_API disk_logger_worker( void* arg ) {
 }
 
 /*---------------------------------------------------------------------------
- * Print Usage Information
+ * Print usage information
  *---------------------------------------------------------------------------*/
 static void print_usage( int exit_code ) {
     puts(
@@ -149,7 +149,7 @@ static void print_usage( int exit_code ) {
 }
 
 /*---------------------------------------------------------------------------
- * Main Thread (TID 0): Sets up UI, spawns threads, does DOS IOStack output
+ * Main thread (TID 0): sets up UI, spawns threads, does DOS IOStack output
  *---------------------------------------------------------------------------*/
 int main( int argc, char* argv[] ) {
     unsigned int main_ticks = 0;
@@ -205,14 +205,14 @@ int main( int argc, char* argv[] ) {
     /* Initialize scheduler at 4x stock PIT rate (72.8 Hz / 13.7 ms quantum) */
     thread_init( MT_TICK_73HZ, MT_PRIO_NORMAL );
 
-    /* Spawn 2 normal-priority compute threads with auto-allocated stacks */
+    /* Spawn two normal-priority compute threads with auto-allocated stacks */
     t1 = thread_create( compute_worker, (void*) 1, NULL, 0, MT_PRIO_NORMAL );
     t2 = thread_create( compute_worker, (void*) 2, NULL, 0, MT_PRIO_NORMAL );
 
-    /* Spawn 1 low-priority spinner thread with caller-supplied stack */
+    /* Spawn a low-priority spinner thread with caller-supplied stack */
     t3 = thread_create( low_prio_spinner, NULL, g_custom_stack, sizeof( g_custom_stack ), MT_PRIO_LOW );
 
-    /* Spawn 1 high-priority Disk I/O logger thread */
+    /* Spawn a high-priority Disk I/O logger thread */
     t4 = thread_create( disk_logger_worker, NULL, NULL, 1536, MT_PRIO_HIGH );
 
     /* Main loop: exercises DOS IOStack (kbhit/getch & DOS AH=02h) */
