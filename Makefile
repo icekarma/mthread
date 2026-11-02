@@ -120,7 +120,7 @@ LIB_END   =
 
 # --- 5. Build targets & dependencies ---
 LIBS    = $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib $(OBJDIR)\input.lib
-DEMOS   = $(BINDIR)\demo.$(EXT) $(BINDIR)\inpdemo.$(EXT) $(BINDIR)\syncdemo.$(EXT) $(BINDIR)\cppdemo.$(EXT) $(BINDIR)\cppinp.$(EXT)  $(BINDIR)\cppsync.$(EXT)
+DEMOS   = $(BINDIR)\cdemo.$(EXT) $(BINDIR)\cinput.$(EXT) $(BINDIR)\csync.$(EXT) $(BINDIR)\cppdemo.$(EXT) $(BINDIR)\cppinput.$(EXT) $(BINDIR)\cppsync.$(EXT)
 TARGETS = $(LIBS) $(DEMOS)
 
 all: cls dirs $(TARGETS)
@@ -139,11 +139,11 @@ dirs:
 
 # Object header / include dependencies (compiled via inference rules)
 $(OBJDIR)\mthread.obj $(OBJDIR)\videohlp.obj $(OBJDIR)\kbd.obj $(OBJDIR)\mouse.obj: mthread.inc
-$(OBJDIR)\demo.obj $(OBJDIR)\inpdemo.obj $(OBJDIR)\syncdemo.obj:                    mthread.h video.h
 $(OBJDIR)\mthrwrap.obj:                                                             mthread.h mthrwrap.h
-$(OBJDIR)\cppdemo.obj $(OBJDIR)\cppinp.obj $(OBJDIR)\cppsync.obj:                   mthread.h mthrwrap.h video.h
 $(OBJDIR)\video.obj:                                                                video.h
-$(OBJDIR)\inpdemo.obj $(OBJDIR)\cppinp.obj:                                         input.h
+$(OBJDIR)\cdemo.obj $(OBJDIR)\cinput.obj $(OBJDIR)\csync.obj:                       mthread.h video.h
+$(OBJDIR)\cppdemo.obj $(OBJDIR)\cppinput.obj $(OBJDIR)\cppsync.obj:                 mthread.h mthrwrap.h video.h
+$(OBJDIR)\cinput.obj $(OBJDIR)\cppinput.obj:                                        input.h
 
 # Static libraries
 $(OBJDIR)\mthread.lib: $(OBJDIR)\mthread.obj $(OBJDIR)\mthrwrap.obj
@@ -159,11 +159,11 @@ $(OBJDIR)\input.lib: $(OBJDIR)\kbd.obj $(OBJDIR)\mouse.obj
 	$(LIB_CMD) $@ +$(**: = +)$(LIB_END)
 
 # Demo executables (linked via {$(OBJDIR)}.obj{$(BINDIR)}.$(EXT) inference rule)
-$(BINDIR)\demo.$(EXT):     $(OBJDIR)\demo.obj     $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib
-$(BINDIR)\inpdemo.$(EXT):  $(OBJDIR)\inpdemo.obj  $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib $(OBJDIR)\input.lib
-$(BINDIR)\syncdemo.$(EXT): $(OBJDIR)\syncdemo.obj $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib
+$(BINDIR)\cdemo.$(EXT):    $(OBJDIR)\cdemo.obj    $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib
+$(BINDIR)\cinput.$(EXT):   $(OBJDIR)\cinput.obj   $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib $(OBJDIR)\input.lib
+$(BINDIR)\csync.$(EXT):    $(OBJDIR)\csync.obj    $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib
 $(BINDIR)\cppdemo.$(EXT):  $(OBJDIR)\cppdemo.obj  $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib
-$(BINDIR)\cppinp.$(EXT):   $(OBJDIR)\cppinp.obj   $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib $(OBJDIR)\input.lib
+$(BINDIR)\cppinput.$(EXT): $(OBJDIR)\cppinput.obj $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib $(OBJDIR)\input.lib
 $(BINDIR)\cppsync.$(EXT):  $(OBJDIR)\cppsync.obj  $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib
 
 clean:

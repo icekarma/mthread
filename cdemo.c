@@ -1,5 +1,5 @@
 /*===========================================================================
- * demo.c - Test harness for and demonstration of MTHREAD (MSC 7.00 / MASM 6.11)
+ * cdemo.c - Test harness for and demonstration of MTHREAD (MSC 7.00 / MASM 6.11)
  *===========================================================================*/
 
 #include <conio.h>
@@ -143,7 +143,7 @@ static void MT_API disk_logger_worker( void* arg ) {
  *---------------------------------------------------------------------------*/
 static void print_usage( int exit_code ) {
     puts(
-        "Usage: demo [--burn <count>]\n"
+        "Usage: cdemo [--burn <count>]\n"
         "  --burn <count>  Set CPU-bound work iterations (default: 8192)"
     );
     exit( exit_code );

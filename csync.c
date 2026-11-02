@@ -1,5 +1,5 @@
 /*===========================================================================
- * syncdemo.c - Synchronization Primitives Verification Harness
+ * csync.c - Synchronization Primitives Verification Harness
  * Demonstrates:
  *   1. Manual-Reset & Auto-Reset Win32 Events (mt_event_t)
  *   2. Recursive Mutex with Priority Inheritance (mt_mutex_t)

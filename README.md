@@ -14,9 +14,9 @@ The NMAKE `Makefile` places intermediate object files, static libraries, and lin
 * **`input.lib` (`kbd.asm`, `mouse.asm`):** Interrupt-driven keyboard (`INT 09h`) and mouse (`INT 33h`) handlers that wake threads via `event_set_isr()` with zero polling overhead.
 
 ### Demo Executables (`bin\`)
-* **`demo` / `cppdemo`:** Preemptive compute workers, low-priority background spinner on a caller-supplied static stack, per-thread `STKHQQ` stack probe verification, concurrent `INT 21h` `DiskStack` file logging (`MTTEST.LOG`), and `IOStack` console output.
-* **`inpdemo` / `cppinp`:** Zero-polling high-priority input worker woken via `event_set_isr()` from `INT 09h` keyboard and `INT 33h` mouse interrupts, featuring live BIOS modifier inspection, a 32-character typeahead buffer, and clickable mouse UI controls alongside background compute threads.
-* **`syncdemo` / `cppsync`:** Showcase of manual-reset and auto-reset Win32 events, recursive mutexes with Priority Inheritance (`LOW` boosted to `HIGH` to defeat a `NORMAL`-priority CPU hog), bounded producer-consumer ring buffers using counting semaphores, and batch notifications via condition variables.
+* **`cdemo` / `cppdemo`:** Preemptive compute workers, low-priority background spinner on a caller-supplied static stack, per-thread `STKHQQ` stack probe verification, concurrent `INT 21h` `DiskStack` file logging (`MTTEST.LOG`), and `IOStack` console output.
+* **`cinput` / `cppinput`:** Zero-polling high-priority input worker woken via `event_set_isr()` from `INT 09h` keyboard and `INT 33h` mouse interrupts, featuring live BIOS modifier inspection, a 32-character typeahead buffer, and clickable mouse UI controls alongside background compute threads.
+* **`csync` / `cppsync`:** Showcase of manual-reset and auto-reset Win32 events, recursive mutexes with Priority Inheritance (`LOW` boosted to `HIGH` to defeat a `NORMAL`-priority CPU hog), bounded producer-consumer ring buffers using counting semaphores, and batch notifications via condition variables.
 
 ### Building with NMAKE
 ```dos
