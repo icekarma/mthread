@@ -16,42 +16,39 @@ COMPILER = MSC
 MODEL    = SMALL
 CPU      = 8086
 
-# --- 1. Map memory model to compiler short codes & output extension ---
-EXT = exe
-!IF "$(MODEL)" == "TINY"
-MCODE_UPPER = T
-MCODE_LOWER = t
-EXT         = com
-!ELSEIF "$(MODEL)" == "SMALL"
-MCODE_UPPER = S
-MCODE_LOWER = s
-!ELSEIF "$(MODEL)" == "MEDIUM"
-MCODE_UPPER = M
-MCODE_LOWER = m
-!ELSEIF "$(MODEL)" == "COMPACT"
-MCODE_UPPER = C
-MCODE_LOWER = c
-!ELSEIF "$(MODEL)" == "LARGE"
-MCODE_UPPER = L
-MCODE_LOWER = l
-!ELSEIF "$(MODEL)" == "HUGE"
-MCODE_UPPER = H
-MCODE_LOWER = h
+OBJDIR   = obj
+BINDIR   = bin
+
+# --- 1. Map memory model to compiler short code (MCODE) & extension (EXT) ---
+EXT   = exe
+MCODE = [$(MODEL)]
+!IF "$(COMPILER)" == "MSC"
+MCODE = $(MCODE:[TINY]=T)
+MCODE = $(MCODE:[SMALL]=S)
+MCODE = $(MCODE:[MEDIUM]=M)
+MCODE = $(MCODE:[COMPACT]=C)
+MCODE = $(MCODE:[LARGE]=L)
+MCODE = $(MCODE:[HUGE]=H)
 !ELSE
-!ERROR Invalid MODEL="$(MODEL)". Choose TINY, SMALL, MEDIUM, COMPACT, LARGE, or HUGE.
+MCODE = $(MCODE:[TINY]=t)
+MCODE = $(MCODE:[SMALL]=s)
+MCODE = $(MCODE:[MEDIUM]=m)
+MCODE = $(MCODE:[COMPACT]=c)
+MCODE = $(MCODE:[LARGE]=l)
+MCODE = $(MCODE:[HUGE]=h)
 !ENDIF
 
-# --- 2. Map CPU option (8086 vs 186) ---
+!IF "$(MCODE)" == "[$(MODEL)]"
+!ERROR Invalid MODEL="$(MODEL)". Choose TINY, SMALL, MEDIUM, COMPACT, LARGE, or HUGE.
+!ELSEIF "$(MODEL)" == "TINY"
+EXT   = com
+!ENDIF
+
+# --- 2. Validate CPU option (8086 vs 186) ---
 !IF "$(CPU)" == "186"
 ASM_CPU_FLAGS = /DUSE_186
-MSC_CPU_FLAGS = /G1
-BCC_CPU_FLAGS = -1
-WAT_CPU_FLAGS = -1
 !ELSEIF "$(CPU)" == "8086"
 ASM_CPU_FLAGS =
-MSC_CPU_FLAGS = /G0
-BCC_CPU_FLAGS = -1-
-WAT_CPU_FLAGS = -0
 !ELSE
 !ERROR Invalid CPU="$(CPU)". Choose 8086 or 186.
 !ENDIF
@@ -59,40 +56,74 @@ WAT_CPU_FLAGS = -0
 # --- 3. Configure toolchain commands & flags ---
 !IF "$(COMPILER)" == "MSC"
 !IF "$(MODEL)" == "TINY"
-MSC_DBG  =
+MSC_DBG   =
 !ELSE
-MSC_DBG  = /Zi
+MSC_DBG   = /Zi
 !ENDIF
-CC       = cl
-AS       = ml
-CFLAGS   = /c /A$(MCODE_UPPER) $(MSC_CPU_FLAGS) /Gy /Ox /W3 $(MSC_DBG) /nologo
-AFLAGS   = /c /W2 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) $(MSC_DBG) /nologo
-LINK_CMD = $(CC) /A$(MCODE_UPPER) $(MSC_CPU_FLAGS) /nologo
-LIB_CMD  = lib /nologo
+CPU_FLAGS = $(CPU:8086=/G0)
+CPU_FLAGS = $(CPU_FLAGS:186=/G1)
+CC        = cl
+AS        = ml
+CFLAGS    = /c /A$(MCODE) $(CPU_FLAGS) /Gy /Ox /W3 $(MSC_DBG) /DOFFSET_DISPLAY /nologo
+AFLAGS    = /c /W2 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) $(MSC_DBG) /DOFFSET_DISPLAY /nologo
+FO_FLAG   = /Fo$@
+AS_ARGS   = /Fo$@ $<
+LINK_CMD  = $(CC) /A$(MCODE) $(CPU_FLAGS) /nologo
+FE_FLAG   = /Fe$@ /Fm$(OBJDIR)\$(@B).map
+LIB_CMD   = lib /nologo
+LIB_END   = ;
 !ELSEIF "$(COMPILER)" == "BCC"
-CC       = bcc
-AS       = tasm
-CFLAGS   = -c -m$(MCODE_LOWER) $(BCC_CPU_FLAGS) -w -O2 -N-
-AFLAGS   = /m2 /mx /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS)
-LINK_CMD = $(CC) -m$(MCODE_LOWER) $(BCC_CPU_FLAGS)
-LIB_CMD  = tlib
+CPU_FLAGS = $(CPU:8086=-1-)
+CPU_FLAGS = $(CPU_FLAGS:186=-1)
+CC        = bcc
+AS        = tasm
+CFLAGS    = -c -m$(MCODE) $(CPU_FLAGS) -w -O2 -N- -DOFFSET_DISPLAY
+AFLAGS    = /m2 /mx /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) /DOFFSET_DISPLAY
+FO_FLAG   = -o$@
+AS_ARGS   = $<, $@
+LINK_CMD  = $(CC) -m$(MCODE) $(CPU_FLAGS)
+FE_FLAG   = -e$@
+LIB_CMD   = tlib
+LIB_END   =
 !ELSEIF "$(COMPILER)" == "WATCOM"
-CC       = wcl
-AS       = ml
-CFLAGS   = -c -m$(MCODE_LOWER) $(WAT_CPU_FLAGS) -wx -ox -zc
-AFLAGS   = /c /W3 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS)
-LINK_CMD = $(CC) -m$(MCODE_LOWER) $(WAT_CPU_FLAGS)
-LIB_CMD  = wlib -q -b -n
+CPU_FLAGS = $(CPU:8086=-0)
+CPU_FLAGS = $(CPU_FLAGS:186=-1)
+CC        = wcl
+AS        = ml
+CFLAGS    = -c -m$(MCODE) $(CPU_FLAGS) -wx -ox -zc -DOFFSET_DISPLAY
+AFLAGS    = /c /W3 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) /DOFFSET_DISPLAY
+FO_FLAG   = -fo=$@
+AS_ARGS   = /Fo$@ $<
+LINK_CMD  = $(CC) -m$(MCODE) $(CPU_FLAGS)
+FE_FLAG   = -fe=$@ -fm=$(OBJDIR)\$(@B).map
+LIB_CMD   = wlib -q -b -n
+LIB_END   =
 !ELSE
 !ERROR Invalid COMPILER="$(COMPILER)". Choose MSC, BCC, or WATCOM.
 !ENDIF
 
-# --- 4. Build targets ---
-LIBS    = mthread.lib vid.lib input.lib
-DEMOS   = demo.$(EXT) inpdemo.$(EXT) syncdemo.$(EXT) cppdemo.$(EXT) cppinp.$(EXT) cppsync.$(EXT)
+# --- 4. Inference rules ---
+.SUFFIXES:
+.SUFFIXES: .obj .asm .cpp .c
+
+{.}.asm{$(OBJDIR)}.obj:
+	$(AS) $(AFLAGS) $(AS_ARGS)
+
+{.}.c{$(OBJDIR)}.obj:
+	$(CC) $(CFLAGS) $(FO_FLAG) $<
+
+{.}.cpp{$(OBJDIR)}.obj:
+	$(CC) $(CFLAGS) $(FO_FLAG) $<
+
+{$(OBJDIR)}.obj{$(BINDIR)}.$(EXT):
+	$(LINK_CMD) $(FE_FLAG) $**
+
+# --- 5. Build targets & dependencies ---
+LIBS    = $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib $(OBJDIR)\input.lib
+DEMOS   = $(BINDIR)\demo.$(EXT) $(BINDIR)\inpdemo.$(EXT) $(BINDIR)\syncdemo.$(EXT) $(BINDIR)\cppdemo.$(EXT) $(BINDIR)\cppinp.$(EXT)  $(BINDIR)\cppsync.$(EXT)
 TARGETS = $(LIBS) $(DEMOS)
 
-all: cls $(TARGETS)
+all: cls dirs $(TARGETS)
 
 cls:
 	@cls
@@ -102,91 +133,50 @@ cls:
 	@echo Target CPU:   $(CPU)
 	@echo.
 
-mthread.obj: mthread.asm mthread.inc
-	$(AS) $(AFLAGS) mthread.asm
+dirs:
+	@if not exist $(OBJDIR)\nul mkdir $(OBJDIR)
+	@if not exist $(BINDIR)\nul mkdir $(BINDIR)
 
-mthrwrap.obj: mthrwrap.cpp mthread.h mthrwrap.h
-	$(CC) $(CFLAGS) mthrwrap.cpp
+# Object header / include dependencies (compiled via inference rules)
+$(OBJDIR)\mthread.obj $(OBJDIR)\videohlp.obj $(OBJDIR)\kbd.obj $(OBJDIR)\mouse.obj: mthread.inc
+$(OBJDIR)\demo.obj $(OBJDIR)\inpdemo.obj $(OBJDIR)\syncdemo.obj:                    mthread.h video.h
+$(OBJDIR)\mthrwrap.obj:                                                             mthread.h mthrwrap.h
+$(OBJDIR)\cppdemo.obj $(OBJDIR)\cppinp.obj $(OBJDIR)\cppsync.obj:                   mthread.h mthrwrap.h video.h
+$(OBJDIR)\video.obj:                                                                video.h
+$(OBJDIR)\inpdemo.obj $(OBJDIR)\cppinp.obj:                                         input.h
 
-mthread.lib: mthread.obj mthrwrap.obj
-	-if exist mthread.lib del mthread.lib
-!IF "$(COMPILER)" == "MSC"
-	$(LIB_CMD) mthread.lib +mthread.obj +mthrwrap.obj;
-!ELSE
-	$(LIB_CMD) mthread.lib +mthread.obj +mthrwrap.obj
-!ENDIF
+# Static libraries
+$(OBJDIR)\mthread.lib: $(OBJDIR)\mthread.obj $(OBJDIR)\mthrwrap.obj
+	-if exist $@ del $@
+	$(LIB_CMD) $@ +$(**: = +)$(LIB_END)
 
-videohlp.obj: videohlp.asm mthread.inc
-	$(AS) $(AFLAGS) /DOFFSET_DISPLAY videohlp.asm
+$(OBJDIR)\vid.lib: $(OBJDIR)\video.obj $(OBJDIR)\videohlp.obj
+	-if exist $@ del $@
+	$(LIB_CMD) $@ +$(**: = +)$(LIB_END)
 
-video.obj: video.c video.h
-	$(CC) $(CFLAGS) /DOFFSET_DISPLAY video.c
+$(OBJDIR)\input.lib: $(OBJDIR)\kbd.obj $(OBJDIR)\mouse.obj
+	-if exist $@ del $@
+	$(LIB_CMD) $@ +$(**: = +)$(LIB_END)
 
-vid.lib: video.obj videohlp.obj
-	-if exist vid.lib del vid.lib
-!IF "$(COMPILER)" == "MSC"
-	$(LIB_CMD) vid.lib +video.obj +videohlp.obj;
-!ELSE
-	$(LIB_CMD) vid.lib +video.obj +videohlp.obj
-!ENDIF
-
-kbd.obj: kbd.asm mthread.inc
-	$(AS) $(AFLAGS) kbd.asm
-
-mouse.obj: mouse.asm mthread.inc
-	$(AS) $(AFLAGS) mouse.asm
-
-input.lib: kbd.obj mouse.obj
-	-if exist input.lib del input.lib
-!IF "$(COMPILER)" == "MSC"
-	$(LIB_CMD) input.lib +kbd.obj +mouse.obj;
-!ELSE
-	$(LIB_CMD) input.lib +kbd.obj +mouse.obj
-!ENDIF
-
-demo.obj: demo.c mthread.h video.h
-	$(CC) $(CFLAGS) demo.c
-
-demo.$(EXT): demo.obj mthread.lib vid.lib
-	$(LINK_CMD) demo.obj mthread.lib vid.lib
-
-inpdemo.obj: inpdemo.c mthread.h input.h video.h
-	$(CC) $(CFLAGS) inpdemo.c
-
-inpdemo.$(EXT): inpdemo.obj mthread.lib vid.lib input.lib
-	$(LINK_CMD) inpdemo.obj mthread.lib vid.lib input.lib
-
-syncdemo.obj: syncdemo.c mthread.h video.h
-	$(CC) $(CFLAGS) syncdemo.c
-
-syncdemo.$(EXT): syncdemo.obj mthread.lib vid.lib
-	$(LINK_CMD) syncdemo.obj mthread.lib vid.lib
-
-cppdemo.obj: cppdemo.cpp mthread.h mthrwrap.h video.h
-	$(CC) $(CFLAGS) cppdemo.cpp
-
-cppdemo.$(EXT): cppdemo.obj mthread.lib vid.lib
-	$(LINK_CMD) cppdemo.obj mthread.lib vid.lib
-
-cppinp.obj: cppinp.cpp mthread.h mthrwrap.h input.h video.h
-	$(CC) $(CFLAGS) cppinp.cpp
-
-cppinp.$(EXT): cppinp.obj mthread.lib vid.lib input.lib
-	$(LINK_CMD) cppinp.obj mthread.lib vid.lib input.lib
-
-cppsync.obj: cppsync.cpp mthread.h mthrwrap.h video.h
-	$(CC) $(CFLAGS) cppsync.cpp
-
-cppsync.$(EXT): cppsync.obj mthread.lib vid.lib
-	$(LINK_CMD) cppsync.obj mthread.lib vid.lib
+# Demo executables (linked via {$(OBJDIR)}.obj{$(BINDIR)}.$(EXT) inference rule)
+$(BINDIR)\demo.$(EXT):     $(OBJDIR)\demo.obj     $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib
+$(BINDIR)\inpdemo.$(EXT):  $(OBJDIR)\inpdemo.obj  $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib $(OBJDIR)\input.lib
+$(BINDIR)\syncdemo.$(EXT): $(OBJDIR)\syncdemo.obj $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib
+$(BINDIR)\cppdemo.$(EXT):  $(OBJDIR)\cppdemo.obj  $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib
+$(BINDIR)\cppinp.$(EXT):   $(OBJDIR)\cppinp.obj   $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib $(OBJDIR)\input.lib
+$(BINDIR)\cppsync.$(EXT):  $(OBJDIR)\cppsync.obj  $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib
 
 clean:
-	-if exist *.obj del *.obj
-	-if exist *.exe del *.exe
-	-if exist *.com del *.com
-	-if exist *.lib del *.lib
-	-if exist *.map del *.map
-	-if exist *.bak del *.bak
+	-if exist $(OBJDIR)\*.obj del $(OBJDIR)\*.obj
+	-if exist $(OBJDIR)\*.lib del $(OBJDIR)\*.lib
+	-if exist $(OBJDIR)\*.map del $(OBJDIR)\*.map
+	-if exist $(OBJDIR)\*.bak del $(OBJDIR)\*.bak
+	-if exist $(BINDIR)\*.exe del $(BINDIR)\*.exe
+	-if exist $(BINDIR)\*.com del $(BINDIR)\*.com
+	-if exist $(BINDIR)\*.map del $(BINDIR)\*.map
 	-if exist mttest.log del mttest.log
+	-if exist $(BINDIR)\mttest.log del $(BINDIR)\mttest.log
+	-if exist $(OBJDIR)\nul rmdir $(OBJDIR)
+	-if exist $(BINDIR)\nul rmdir $(BINDIR)
 
-.PHONY: all clean
+.PHONY: all cls dirs clean
