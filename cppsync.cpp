@@ -247,7 +247,7 @@ int main( void ) {
 #if defined RULER
     video_ruler( 1, 3 );
 #endif
-    video_puts(    1,  7, 0x1F,        "\xCD\xCD\xCD MS-DOS 8086 SYNCHRONIZATION PRIMITIVES SHOWCASE (SYNCDEMO) \xCD\xCD\xCD" );
+    video_puts(    1, 11, 0x1F,            "\xCD\xCD\xCD MS-DOS 8086 C++ SYNCHRONIZATION PRIMITIVE SHOWCASE \xCD\xCD\xCD" );
     video_puts(    3,  0, 0x17, "Primitives: Manual/auto events | Priority-inherited mutex | Semaphores | CondVar" );
     video_puts(    5,  4, 0x1B,     "Thread        State        Visual telemetry                        Count"     );
     video_puts(    6,  4, 0x17,     "\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4"     );

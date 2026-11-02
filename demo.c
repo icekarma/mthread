@@ -18,7 +18,8 @@ static volatile unsigned long g_iter_count[MT_MAX_THREADS] = { 0, };
 /* Caller-supplied static stack for thread 3 (tests non-malloc stack path) */
 static unsigned char          g_custom_stack[1024];
 
-static const char             g_spinner[]                  = "|/-\\";
+static const char             g_spinner[4]                 = { '|', '/', '-', '\\' };
+static const unsigned char    g_bar_chars[2]               = { 0xDB, 0xFE };
 
 /* CPU-bound work iterations */
 static unsigned int           g_burn_count                 = 8192;
@@ -41,13 +42,13 @@ static unsigned int stack_probe_test( unsigned int depth ) {
  * Worker thread (TIDs 1 & 2): normal priority preemptive compute + sleep
  *---------------------------------------------------------------------------*/
 static void MT_API compute_worker( void* arg ) {
-    int                   id      = (int) arg;
-    tid_t                 self    = thread_self( );
-    int const             row     = 6 + id * 2;
-    unsigned char const   attr    = (unsigned char) ( ( id == 1 ) ? 0x1F : 0x2F );
-    unsigned int          bar_pos = 31;
-    unsigned int const    cburns  = ( ( id + 1 ) * g_burn_count ) / 2;
+    tid_t const           self    = thread_self( );
+    int const             row     = 6 + self * 2;
+    unsigned char const   attr    = (unsigned char) ( ( self << 4 ) | 0x0F );
+    int                   bar_pos = 31;
+    unsigned int const    cburns  = ( (unsigned int) ( self + 1 ) * g_burn_count ) / 2;
     volatile unsigned int burn;
+    (void) arg;
 
     while ( g_running ) {
         /* 1. Exercise __chkstk on this thread's stack */
@@ -65,7 +66,7 @@ static void MT_API compute_worker( void* arg ) {
         if ( bar_pos == 0 ) {
             video_puts( row, 31, attr, "                                " );
         }
-        video_putc( row, 31 + bar_pos, attr, (unsigned char) ( ( bar_pos & 1 ) ? 0xFE : 0xDB ) );
+        video_putc( row, 31 + bar_pos, attr, g_bar_chars[bar_pos & 1] );
         video_putu32( row, 66, 0x1E, g_iter_count[self] );
 
         /* 4. Every 8 steps, sleep briefly so MT_PRIO_LOW thread can run */
@@ -82,7 +83,7 @@ static void MT_API compute_worker( void* arg ) {
  * Runs ONLY when higher-priority threads are sleeping or blocked.
  *---------------------------------------------------------------------------*/
 static void MT_API low_prio_spinner( void* arg ) {
-    tid_t                 self = thread_self( );
+    tid_t const           self = thread_self( );
     int const             row  = 12;
     unsigned int          idx  = 0;
     volatile unsigned int burn;
@@ -106,9 +107,9 @@ static void MT_API low_prio_spinner( void* arg ) {
  * Disk I/O thread (TID 4): exercises INT 21h DiskStack via stdio
  *---------------------------------------------------------------------------*/
 static void MT_API disk_logger_worker( void* arg ) {
-    tid_t     self = thread_self( );
-    int const row  = 14;
-    FILE*     fp;
+    tid_t const self = thread_self( );
+    int const   row  = 14;
+    FILE*       fp;
     (void) arg;
 
     while ( g_running ) {
@@ -149,6 +150,31 @@ static void print_usage( int exit_code ) {
 }
 
 /*---------------------------------------------------------------------------
+ * Process command-line arguments
+ *---------------------------------------------------------------------------*/
+static void process_command_line( int argc, char* argv[] ) {
+    int i;
+    for ( i = 1; i < argc; ++i ) {
+        if ( ( stricmp( argv[i], "--burn" ) == 0 ) && ( ( i + 1 ) < argc ) ) {
+            g_burn_count = (unsigned int) atoi( argv[++i] );
+            if ( g_burn_count < 16 ) {
+                g_burn_count = 16;
+            }
+        } else if (
+            ( stricmp( argv[i], "--help" ) == 0 ) ||
+            ( stricmp( argv[i], "/h"     ) == 0 ) ||
+            ( stricmp( argv[i], "/?"     ) == 0 ) ||
+            ( stricmp( argv[i], "-h"     ) == 0 ) ||
+            ( stricmp( argv[i], "-?"     ) == 0 )
+        ) {
+            print_usage( 0 );
+        } else {
+            print_usage( 1 );
+        }
+    }
+}
+
+/*---------------------------------------------------------------------------
  * Main thread (TID 0): sets up UI, spawns threads, does DOS IOStack output
  *---------------------------------------------------------------------------*/
 int main( int argc, char* argv[] ) {
@@ -158,21 +184,7 @@ int main( int argc, char* argv[] ) {
     tid_t        t3;
     tid_t        t4;
 
-    {
-        int i;
-        for ( i = 1; i < argc; ++i ) {
-            if ( stricmp( argv[i], "--burn" ) == 0 && ( i + 1 ) < argc ) {
-                g_burn_count = (unsigned int) atoi( argv[++i] );
-                if ( g_burn_count < 16 ) {
-                    g_burn_count = 16;
-                }
-            } else if ( ( stricmp( argv[i], "--help" ) == 0 ) || ( stricmp( argv[i], "/h" ) == 0 ) || ( stricmp( argv[i], "/?" ) == 0 ) || ( stricmp( argv[i], "-h" ) == 0 ) || ( stricmp( argv[i], "-?" ) == 0 ) ) {
-                print_usage( 0 );
-            } else {
-                print_usage( 1 );
-            }
-        }
-    }
+    process_command_line( argc, argv );
 
     video_init( );
     video_clear( 0x17 );
@@ -205,9 +217,9 @@ int main( int argc, char* argv[] ) {
     /* Initialize scheduler at 4x stock PIT rate (72.8 Hz / 13.7 ms quantum) */
     thread_init( MT_TICK_73HZ, MT_PRIO_NORMAL );
 
-    /* Spawn two normal-priority compute threads with auto-allocated stacks */
-    t1 = thread_create( compute_worker, (void*) 1, NULL, 0, MT_PRIO_NORMAL );
-    t2 = thread_create( compute_worker, (void*) 2, NULL, 0, MT_PRIO_NORMAL );
+    /* Spawn a pair of normal-priority compute threads with auto-allocated stacks */
+    t1 = thread_create( compute_worker, NULL, NULL, 0, MT_PRIO_NORMAL );
+    t2 = thread_create( compute_worker, NULL, NULL, 0, MT_PRIO_NORMAL );
 
     /* Spawn a low-priority spinner thread with caller-supplied stack */
     t3 = thread_create( low_prio_spinner, NULL, g_custom_stack, sizeof( g_custom_stack ), MT_PRIO_LOW );
@@ -215,10 +227,15 @@ int main( int argc, char* argv[] ) {
     /* Spawn a high-priority Disk I/O logger thread */
     t4 = thread_create( disk_logger_worker, NULL, NULL, 1536, MT_PRIO_HIGH );
 
-    /* Main loop: exercises DOS IOStack (kbhit/getch & DOS AH=02h) */
+    /* Main loop: exercises DOS IOStack (_kbhit/_getch & DOS AH=02h) */
     while ( g_running ) {
+        if ( thread_is_break_requested( ) ) {
+            g_running = 0;
+            break;
+        }
+
         if ( _kbhit( ) ) {
-            int ch = _getch( );
+            int const ch = _getch( );
             if ( ( ch == 27 ) || ( ch == 'q' ) || ( ch == 'Q' ) ) {
                 g_running = 0;
                 break;

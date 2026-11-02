@@ -268,6 +268,6 @@ int main( int argc, char* argv[] ) {
 
     // Move cursor below table before returning to COMMAND.COM
     video_gotoxy( 22, 0 );
-    printf( "Clean shutdown complete. Disk logger wrote %u entries to MTTEST.LOG.\n", g_disk_writes );
+    printf( "\rClean shutdown complete. Disk logger wrote %u entries to MTTEST.LOG.\n", g_disk_writes );
     return 0;
 }
