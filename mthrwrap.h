@@ -51,7 +51,7 @@ public:
         return s_ref_count;
     }
 
-    int Initialize( unsigned char pit_shift, unsigned char main_prio ) {
+    int Initialize( unsigned char pit_shift = MT_TICK_18HZ, unsigned char main_prio = MT_PRIO_NORMAL ) {
         if ( !cmp_xchg( &s_active, 0, 1 ) ) {
             return MT_ERR_INVALID;
         }
@@ -345,7 +345,7 @@ class MSemaphore {
 
 public:
 
-    MSemaphore( unsigned int initial_count ) {
+    MSemaphore( unsigned int initial_count = 0 ) {
         sem_init( &sem, initial_count );
     }
 
