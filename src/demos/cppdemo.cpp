@@ -2,14 +2,14 @@
 // cppdemo.cpp - C++ Verification Harness for MTHREAD (mthrwrap)
 //===========================================================================
 
+#include <mthread/mthread.h>
+#include <mthread/video.h>
+
 #include <conio.h>
 #include <dos.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "mthrwrap.h"
-#include "video.h"
 
 static volatile int           g_running                    = 1;
 static volatile unsigned int  g_disk_writes                = 0;

@@ -14,7 +14,7 @@ ELSE
     .8086
 ENDIF
 
-INCLUDE mthread.inc
+INCLUDE mthread/mthread.inc
 
 ifdef OFFSET_DISPLAY
     .DATA

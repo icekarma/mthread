@@ -18,7 +18,7 @@ IFDEF USE_FPU
     .8087
 ENDIF
 
-INCLUDE mthread.inc
+INCLUDE mthread/mthread.inc
 
 ; External MSC 7.00 / CRT symbols
 EXTERNDEF C STKHQQ: WORD            ; MSC 7.00 stack-check lower bound in DGROUP

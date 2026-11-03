@@ -14,7 +14,7 @@ ELSE
     .8086
 ENDIF
 
-INCLUDE mthread.inc
+INCLUDE mthread/mthread.inc
 
 EXTERNDEF C event_set_isr: PROC
 EXTERNDEF C mt_enter_isr:  PROC

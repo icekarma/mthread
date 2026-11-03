@@ -21,6 +21,7 @@ FPU      = NONE
 OBJDIR   = obj
 BINDIR   = bin
 LIBDIR   = lib
+INCPATH  = include
 
 # --- 1. Map memory model to compiler short code (MCODE) & extension (EXT) ---
 EXT   = exe
@@ -77,8 +78,8 @@ CPU_FLAGS = $(CPU:8086=/G0)
 CPU_FLAGS = $(CPU_FLAGS:186=/G1)
 CC        = cl
 AS        = ml
-CFLAGS    = /c /A$(MCODE) $(CPU_FLAGS) /Gy /Ox /W3 $(MSC_DBG) /DOFFSET_DISPLAY /nologo
-AFLAGS    = /c /W2 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) $(ASM_FPU_FLAGS) $(MSC_DBG) /DOFFSET_DISPLAY /nologo
+CFLAGS    = /c /A$(MCODE) $(CPU_FLAGS) /Gy /Ox /W3 $(MSC_DBG) /I$(INCPATH) /DOFFSET_DISPLAY /nologo
+AFLAGS    = /c /W2 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) $(ASM_FPU_FLAGS) $(MSC_DBG) /I$(INCPATH) /DOFFSET_DISPLAY /nologo
 FO_FLAG   = /Fo$@
 AS_ARGS   = /Fo$@ $<
 LINK_CMD  = $(CC) /A$(MCODE) $(CPU_FLAGS) /nologo
@@ -90,8 +91,8 @@ CPU_FLAGS = $(CPU:8086=-1-)
 CPU_FLAGS = $(CPU_FLAGS:186=-1)
 CC        = bcc
 AS        = tasm
-CFLAGS    = -c -m$(MCODE) $(CPU_FLAGS) -w -O2 -N- -DOFFSET_DISPLAY
-AFLAGS    = /m2 /mx /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) $(ASM_FPU_FLAGS) /DOFFSET_DISPLAY
+CFLAGS    = -c -m$(MCODE) $(CPU_FLAGS) -w -O2 -N- -I$(INCPATH) -DOFFSET_DISPLAY
+AFLAGS    = /m2 /mx /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) $(ASM_FPU_FLAGS) /I$(INCPATH) /DOFFSET_DISPLAY
 FO_FLAG   = -o$@
 AS_ARGS   = $<, $@
 LINK_CMD  = $(CC) -m$(MCODE) $(CPU_FLAGS)
@@ -103,8 +104,8 @@ CPU_FLAGS = $(CPU:8086=-0)
 CPU_FLAGS = $(CPU_FLAGS:186=-1)
 CC        = wcl
 AS        = ml
-CFLAGS    = -c -m$(MCODE) $(CPU_FLAGS) -wx -ox -zc -DOFFSET_DISPLAY
-AFLAGS    = /c /W3 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) $(ASM_FPU_FLAGS) /DOFFSET_DISPLAY
+CFLAGS    = -c -m$(MCODE) $(CPU_FLAGS) -wx -ox -zc -i=$(INCPATH) -DOFFSET_DISPLAY
+AFLAGS    = /c /W3 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) $(ASM_FPU_FLAGS) /I$(INCPATH) /DOFFSET_DISPLAY
 FO_FLAG   = -fo=$@
 AS_ARGS   = /Fo$@ $<
 LINK_CMD  = $(CC) -m$(MCODE) $(CPU_FLAGS)
@@ -119,13 +120,25 @@ LIB_END   =
 .SUFFIXES:
 .SUFFIXES: .obj .asm .cpp .c
 
-{.}.asm{$(OBJDIR)}.obj:
+{src\mthread}.asm{$(OBJDIR)}.obj:
 	$(AS) $(AFLAGS) $(AS_ARGS)
 
-{.}.c{$(OBJDIR)}.obj:
+{src\mthread}.cpp{$(OBJDIR)}.obj:
 	$(CC) $(CFLAGS) $(FO_FLAG) $<
 
-{.}.cpp{$(OBJDIR)}.obj:
+{src\video}.asm{$(OBJDIR)}.obj:
+	$(AS) $(AFLAGS) $(AS_ARGS)
+
+{src\video}.c{$(OBJDIR)}.obj:
+	$(CC) $(CFLAGS) $(FO_FLAG) $<
+
+{src\input}.asm{$(OBJDIR)}.obj:
+	$(AS) $(AFLAGS) $(AS_ARGS)
+
+{src\demos}.c{$(OBJDIR)}.obj:
+	$(CC) $(CFLAGS) $(FO_FLAG) $<
+
+{src\demos}.cpp{$(OBJDIR)}.obj:
 	$(CC) $(CFLAGS) $(FO_FLAG) $<
 
 {$(OBJDIR)}.obj{$(BINDIR)}.$(EXT):
@@ -153,15 +166,16 @@ dirs:
 	@if not exist $(BINDIR)\nul mkdir $(BINDIR)
 
 # Object header / include dependencies (compiled via inference rules)
-$(OBJDIR)\mthread.obj $(OBJDIR)\videohlp.obj $(OBJDIR)\kbd.obj $(OBJDIR)\mouse.obj: mthread.inc
-$(OBJDIR)\mthrwrap.obj:                                                             mthread.h mthrwrap.h
-$(OBJDIR)\video.obj:                                                                video.h
-$(OBJDIR)\cdemo.obj $(OBJDIR)\cinput.obj $(OBJDIR)\csync.obj:                       mthread.h video.h
-$(OBJDIR)\cppdemo.obj $(OBJDIR)\cppinput.obj $(OBJDIR)\cppsync.obj:                 mthread.h mthrwrap.h video.h
-$(OBJDIR)\cinput.obj $(OBJDIR)\cppinput.obj:                                        input.h
+
+$(OBJDIR)\mthread.obj $(OBJDIR)\videohlp.obj $(OBJDIR)\kbd.obj $(OBJDIR)\mouse.obj: $(INCPATH)\mthread\mthread.inc
+$(OBJDIR)\mthrmgr.obj:                                                              $(INCPATH)\mthread\mthread.h $(INCPATH)\mthread\mthrmgr.h
+$(OBJDIR)\video.obj:                                                                $(INCPATH)\mthread\video.h
+$(OBJDIR)\cdemo.obj $(OBJDIR)\cinput.obj $(OBJDIR)\csync.obj:                       $(INCPATH)\mthread\mthread.h $(INCPATH)\mthread\video.h
+$(OBJDIR)\cppdemo.obj $(OBJDIR)\cppinput.obj $(OBJDIR)\cppsync.obj:                 $(INCPATH)\mthread\mthread.h $(INCPATH)\mthread\video.h
+$(OBJDIR)\cinput.obj $(OBJDIR)\cppinput.obj:                                        $(INCPATH)\mthread\input.h
 
 # Static libraries
-$(LIBDIR)\mthread.lib: $(OBJDIR)\mthread.obj $(OBJDIR)\mthrwrap.obj
+$(LIBDIR)\mthread.lib: $(OBJDIR)\mthread.obj $(OBJDIR)\mthrmgr.obj
 	-if exist $@ del $@
 	$(LIB_CMD) $@ +$(**: = +)$(LIB_END)
 
@@ -189,6 +203,7 @@ clean:
 	-if exist $(BINDIR)\*.com del $(BINDIR)\*.com
 	-if exist $(BINDIR)\*.map del $(BINDIR)\*.map
 	-if exist mttest.log del mttest.log
+	-if exist $(OBJDIR)\mttest.log del $(OBJDIR)\mttest.log
 	-if exist $(BINDIR)\mttest.log del $(BINDIR)\mttest.log
 	-if exist $(OBJDIR)\nul rmdir $(OBJDIR)
 	-if exist $(LIBDIR)\nul rmdir $(LIBDIR)

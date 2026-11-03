@@ -1,4 +1,5 @@
-#include "mthrwrap.h"
+#include <mthread/mthread.h>
+#include <mthread/mthrmgr.h>
 
 //================================================
 // Static member variables
