@@ -12,10 +12,8 @@
 extern "C" {
 #endif
 
-#if defined(__WATCOMC__)
-  #define MT_API __cdecl
-#else
-  #define MT_API _cdecl
+#if !defined MT_API
+#   define MT_API __cdecl
 #endif
 
 /* Thread ID and return codes */
@@ -75,6 +73,13 @@ void          MT_API thread_join_all( void );
 tid_t         MT_API thread_self( void );
 unsigned char MT_API thread_get_priority( tid_t tid );
 int           MT_API thread_set_priority( tid_t tid, unsigned char new_prio );
+
+/* Enables (enable != 0) or disables (enable == 0) 94-byte x87 FPU / emulator
+ * context saving for the calling thread. Returns 1 if FPU context saving is
+ * active for the calling thread, or 0 if disabled/unavailable.
+ */
+int           MT_API thread_enable_fpu( int const enable );
+int           MT_API thread_is_fpu_enabled( void );
 
 /* ISR entry/exit for incrementing/decrementing bios_lock from external
  * hardware ISRs & callbacks

@@ -109,13 +109,22 @@ ENDM
 MAX_THREADS         EQU 8
 NO_THREAD           EQU 0FFh
 DEFAULT_STACK_SIZE  EQU 1024
+IFDEF USE_FPU
+ISR_STACK_SIZE      EQU 768
+ELSE
 ISR_STACK_SIZE      EQU 512
+ENDIF
 STACK_GUARD_MARGIN  EQU 64          ; Margin above allocation base for STKHQQ
 
 SDA_HEADER_SIZE     EQU 24          ; DX=0018h bytes at SDA+00h..17h
 SDA_CON_VARS_SIZE   EQU 16          ; Console state vars at SDA+18h..27h
 IOSTACK_SIZE        EQU 384         ; 180h bytes for DOS IOStack
 IOSWAP_BUF_SIZE     EQU (SDA_CON_VARS_SIZE + IOSTACK_SIZE) ; 400 bytes total
+
+FPU_STATE_SIZE      EQU 94          ; 94-byte x87 FSAVE/FRSTOR context frame
+FPU_MODE_NONE       EQU 0           ; No x87 hardware or software emulator
+FPU_MODE_HW         EQU 1           ; Physical 8087/80287/80387+ coprocessor
+FPU_MODE_EMU        EQU 2           ; CRT 8087 software emulator (INT 34h..3Eh)
 
 ; Thread states (tcb_state)
 STATE_UNUSED        EQU 0
@@ -132,6 +141,7 @@ STATE_WAIT_SYNC     EQU 8           ; Blocked on Event, Mutex, Sem, or CondVar
 TCB_FLG_OWN_STACK   EQU 01h         ; Stack allocated via malloc()
 TCB_FLG_IN_DOS      EQU 02h         ; Thread is currently inside INT 21h
 TCB_FLG_SWAPPED_IO  EQU 04h         ; Thread's IOStack is saved in io_swap_buf
+TCB_FLG_FPU         EQU 08h         ; Thread saves/restores 94-byte FPU context
 
 ; DOS internal stack IDs (dos_stack_id)
 DOS_STK_NONE        EQU 0

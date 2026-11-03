@@ -14,6 +14,10 @@ ELSE
     .8086
 ENDIF
 
+IFDEF USE_FPU
+    .8087
+ENDIF
+
 INCLUDE mthread.inc
 
 ; External MSC 7.00 / CRT symbols
@@ -69,6 +73,17 @@ isr_stack_top   LABEL WORD
 
 tid_bit_lut     DB  01h, 02h, 04h, 08h, 10h, 20h, 40h, 80h
 
+IFDEF USE_FPU
+; Per-thread 94-byte x87 / emulator state buffers & lookup table
+ALIGN 2
+fpu_table       DB  (MAX_THREADS * FPU_STATE_SIZE) DUP (0)
+fpu_clean_img   DB  FPU_STATE_SIZE DUP (0)
+fpu_off_lut     DW  0, 94, 188, 282, 376, 470, 564, 658
+fpu_probe_word  DW  0
+fpu_owner       DB  NO_THREAD           ; TID whose state is currently in FPU
+fpu_mode        DB  FPU_MODE_NONE       ; FPU_MODE_NONE (0), HW (1), or EMU (2)
+ENDIF
+
 ;=============================================================================
 ; CODE SEGMENT
 ;=============================================================================
@@ -104,6 +119,23 @@ old_int2f       DD  0                   ; Saved DOS Multiplex Interrupt
 old_int33       DD  0                   ; Saved Mouse Driver (if non-null)
 old_int67       DD  0                   ; Saved LIM EMS Driver (if non-null)
 
+IFDEF USE_FPU
+emu_cs          DW  0                   ; Segment of installed x87 emulator
+emu_ss          DW  0                   ; SS on entry to INT 34h..3Eh
+emu_sp          DW  0                   ; SP of INT 34h..3Eh IRET frame (0=none)
+old_int34       DD  0                   ; Saved x87 Emulator ESC 0
+old_int35       DD  0                   ; Saved x87 Emulator ESC 1
+old_int36       DD  0                   ; Saved x87 Emulator ESC 2
+old_int37       DD  0                   ; Saved x87 Emulator ESC 3
+old_int38       DD  0                   ; Saved x87 Emulator ESC 4
+old_int39       DD  0                   ; Saved x87 Emulator ESC 5
+old_int3a       DD  0                   ; Saved x87 Emulator ESC 6
+old_int3b       DD  0                   ; Saved x87 Emulator ESC 7
+old_int3c       DD  0                   ; Saved x87 Emulator Segment Override
+old_int3d       DD  0                   ; Saved x87 Emulator FWAIT
+old_int3e       DD  0                   ; Saved x87 Emulator Fast-Call/Shortcut
+ENDIF
+
 ;-----------------------------------------------------------------------------
 ; isr_timer (INT 08h hardware timer handler)
 ;-----------------------------------------------------------------------------
@@ -118,6 +150,43 @@ skip:
     ; tick PIT and sleepers on the current stack without switching contexts.
     cmp  cs:[bios_lock], 0
     jne  timer_locked_tick
+
+IFDEF USE_FPU
+    ; If software x87 emulator is active and interrupted thread is mid-opcode
+    ; inside INT 34h..3Eh, defer preemption via timer_locked_tick.
+    cmp  cs:[emu_sp], 0
+    je   no_emu_busy
+    push bp
+    mov  bp, sp
+    ; Stack at [bp+0]=saved BP, [bp+2]=IP, [bp+4]=CS, [bp+6]=FLAGS
+    ; Pre-INT 08h SP is (bp + 8). If (bp + 8) > emu_sp, the emulator has
+    ; already executed IRET, so clear emu_sp.
+    push ax
+    mov  ax, ss
+    cmp  ax, cs:[emu_ss]
+    jne  emu_check_cs
+    lea  ax, [bp+8]
+    cmp  ax, cs:[emu_sp]
+    ja   emu_clear_mark
+    IF @Model EQ 1
+        pop  ax
+        pop  bp
+        jmp  timer_locked_tick
+    ENDIF
+emu_check_cs:
+    mov  ax, ss:[bp+4]
+    cmp  ax, cs:[emu_cs]
+    pop  ax
+    pop  bp
+    je   timer_locked_tick
+    jmp  SHORT no_emu_busy
+
+emu_clear_mark:
+    mov  cs:[emu_sp], 0
+    pop  ax
+    pop  bp
+no_emu_busy:
+ENDIF
 
     mov  cs:[scratch_ds], ds
     mov  cs:[scratch_bx], bx
@@ -290,6 +359,9 @@ sched_advance:
     call swap_sda_headers
 
 activate_winner:
+IFDEF USE_FPU
+    call swap_fpu_context
+ENDIF
     mov  current_tid, dl
     mov  current_tcb, si
     mov  bx, si
@@ -458,6 +530,160 @@ xchg_iostk_loop:
     pop  ax
     ret
 exchange_iostack_slice ENDP
+
+IFDEF USE_FPU
+;-----------------------------------------------------------------------------
+; fpu_save_bx / fpu_restore_bx - Save or restore 94-byte FPU state at DS:[BX]
+; Handles both native hardware x87 (FPU_MODE_HW) and INT 39h software emulator
+; (FPU_MODE_EMU). Expects DS = DGROUP, IF = 0. Preserves DX, SI, DI.
+;-----------------------------------------------------------------------------
+fpu_save_bx PROC NEAR
+    cmp  fpu_mode, FPU_MODE_HW
+    je   do_hw_fsave
+    cmp  fpu_mode, FPU_MODE_EMU
+    jne  fpu_save_done
+
+    ; Emulated FSAVE DS:[BX] via INT 39h (CD 39 37)
+    inc  cs:[bios_lock]
+    DB   0CDh, 039h, 037h
+    cli
+    mov  cs:[emu_sp], 0
+    dec  cs:[bios_lock]
+    ret
+
+do_hw_fsave:
+    fnsave [bx]
+    fwait
+fpu_save_done:
+    ret
+fpu_save_bx ENDP
+
+fpu_restore_bx PROC NEAR
+    cmp  fpu_mode, FPU_MODE_HW
+    je   do_hw_frstor
+    cmp  fpu_mode, FPU_MODE_EMU
+    jne  fpu_rstor_done
+
+    ; Emulated FRSTOR DS:[BX] via INT 39h (CD 39 27)
+    inc  cs:[bios_lock]
+    DB   0CDh, 039h, 027h
+    cli
+    mov  cs:[emu_sp], 0
+    dec  cs:[bios_lock]
+    ret
+
+do_hw_frstor:
+    frstor [bx]
+    fwait
+fpu_rstor_done:
+    ret
+fpu_restore_bx ENDP
+
+;-----------------------------------------------------------------------------
+; init_thread_fpu_slot - Copies 94-byte fpu_clean_img into fpu_table[BX]
+; Entry: DS = DGROUP, BX = target TID (0..7)
+;-----------------------------------------------------------------------------
+init_thread_fpu_slot PROC NEAR
+    push ax
+    push bx
+    push cx
+    push si
+    push di
+    push es
+
+    push ds
+    pop  es
+    shl  bx, 1
+    mov  di, fpu_off_lut[bx]
+    add  di, OFFSET fpu_table
+    mov  si, OFFSET fpu_clean_img
+    mov  cx, (FPU_STATE_SIZE / 2)
+    cld
+    rep  movsw
+
+    pop  es
+    pop  di
+    pop  si
+    pop  cx
+    pop  bx
+    pop  ax
+    ret
+init_thread_fpu_slot ENDP
+
+;-----------------------------------------------------------------------------
+; swap_fpu_context - Lazy/owner-tracked 94-byte FPU context switcher
+; Entry: DS = DGROUP, DL = incoming TID, SI = incoming TCB pointer (preserved)
+;-----------------------------------------------------------------------------
+swap_fpu_context PROC NEAR
+    cmp  fpu_mode, FPU_MODE_NONE
+    je   fpu_swap_ret
+    test [si].TCB.tcb_flags, TCB_FLG_FPU
+    jz   fpu_swap_ret               ; Incoming thread is integer-only
+    cmp  fpu_owner, dl
+    je   fpu_swap_ret               ; FPU already holds incoming thread''s state
+
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
+    push es
+
+    ; Save outgoing FPU owner''s state if valid
+    mov  bl, fpu_owner
+    cmp  bl, NO_THREAD
+    je   load_incoming_fpu
+    xor  bh, bh
+    shl  bx, 1
+    mov  bx, fpu_off_lut[bx]
+    add  bx, OFFSET fpu_table
+    call fpu_save_bx
+
+load_incoming_fpu:
+    mov  bl, dl
+    xor  bh, bh
+    shl  bx, 1
+    mov  bx, fpu_off_lut[bx]
+    add  bx, OFFSET fpu_table
+    call fpu_restore_bx
+    mov  fpu_owner, dl
+
+    pop  es
+    pop  di
+    pop  si
+    pop  dx
+    pop  cx
+    pop  bx
+    pop  ax
+fpu_swap_ret:
+    ret
+swap_fpu_context ENDP
+
+;-----------------------------------------------------------------------------
+; Software x87 emulator traps (INT 34h..3Eh)
+; Stamps SS:SP of the emulator IRET frame so isr_timer never preempts mid-opcode
+;-----------------------------------------------------------------------------
+DEFINE_EMU_TRAP MACRO func_name, old_vec
+func_name PROC FAR
+    mov  cs:[emu_ss], ss
+    mov  cs:[emu_sp], sp
+    jmp  DWORD PTR cs:[old_vec]
+func_name ENDP
+ENDM
+
+DEFINE_EMU_TRAP isr_int34, old_int34
+DEFINE_EMU_TRAP isr_int35, old_int35
+DEFINE_EMU_TRAP isr_int36, old_int36
+DEFINE_EMU_TRAP isr_int37, old_int37
+DEFINE_EMU_TRAP isr_int38, old_int38
+DEFINE_EMU_TRAP isr_int39, old_int39
+DEFINE_EMU_TRAP isr_int3a, old_int3a
+DEFINE_EMU_TRAP isr_int3b, old_int3b
+DEFINE_EMU_TRAP isr_int3c, old_int3c
+DEFINE_EMU_TRAP isr_int3d, old_int3d
+DEFINE_EMU_TRAP isr_int3e, old_int3e
+ENDIF
 
 ;-----------------------------------------------------------------------------
 ; soft_context_switch - Voluntary/gatekeeper context save & reschedule
@@ -1073,6 +1299,22 @@ do_unhook_now:
     RESTORE_VEC 33h, old_int33
     RESTORE_VEC 67h, old_int67
 
+IFDEF USE_FPU
+    mov  cs:[emu_sp], 0
+    mov  cs:[emu_cs], 0
+    RESTORE_VEC 34h, old_int34
+    RESTORE_VEC 35h, old_int35
+    RESTORE_VEC 36h, old_int36
+    RESTORE_VEC 37h, old_int37
+    RESTORE_VEC 38h, old_int38
+    RESTORE_VEC 39h, old_int39
+    RESTORE_VEC 3Ah, old_int3a
+    RESTORE_VEC 3Bh, old_int3b
+    RESTORE_VEC 3Ch, old_int3c
+    RESTORE_VEC 3Dh, old_int3d
+    RESTORE_VEC 3Eh, old_int3e
+ENDIF
+
     popf
 unhook_exit:
     pop  es
@@ -1084,7 +1326,7 @@ unhook_exit:
 unhook_hardware ENDP
 
 ;=============================================================================
-; PUBLIC C-CALLABLE API FUNCTIONS (compatible with small/medium/compact/large memory models)
+; PUBLIC C-CALLABLE API FUNCTIONS
 ;=============================================================================
 
 ;-----------------------------------------------------------------------------
@@ -1155,6 +1397,73 @@ skip_atexit_reg:
     mov  cx, (MAX_THREADS / 2)
     xor  ax, ax
     rep  stosw
+
+IFDEF USE_FPU
+    ; 3b. Detect hardware x87 or installed INT 34h..3Eh software emulator
+    mov  fpu_mode, FPU_MODE_NONE
+    mov  fpu_owner, NO_THREAD
+    mov  cs:[emu_cs], 0
+    mov  cs:[emu_sp], 0
+
+    ; First check if an 8087 software emulator/dispatcher is installed on INT 39h
+    mov  ax, 3539h
+    int  21h
+    mov  ax, es
+    or   ax, bx
+    jz   probe_hw_x87
+    cmp  BYTE PTR es:[bx], 0CFh     ; 0CFh = bare IRET
+    je   probe_hw_x87
+
+    ; CRT emulator is hooked on INT 34h..3Eh! Save & hook emulator vectors
+    mov  fpu_mode, FPU_MODE_EMU
+    mov  cs:[emu_cs], es
+    SAVE_AND_HOOK 34h, old_int34, isr_int34
+    SAVE_AND_HOOK 35h, old_int35, isr_int35
+    SAVE_AND_HOOK 36h, old_int36, isr_int36
+    SAVE_AND_HOOK 37h, old_int37, isr_int37
+    SAVE_AND_HOOK 38h, old_int38, isr_int38
+    SAVE_AND_HOOK 39h, old_int39, isr_int39
+    SAVE_AND_HOOK 3Ah, old_int3a, isr_int3a
+    SAVE_AND_HOOK 3Bh, old_int3b, isr_int3b
+    SAVE_AND_HOOK 3Ch, old_int3c, isr_int3c
+    SAVE_AND_HOOK 3Dh, old_int3d, isr_int3d
+    SAVE_AND_HOOK 3Eh, old_int3e, isr_int3e
+    jmp  SHORT capture_clean_fpu
+
+probe_hw_x87:
+    ; No software emulator hooked; probe for physical 8087/287/387+ hardware
+    mov  fpu_probe_word, 5A5Ah
+    fninit
+    fnstsw fpu_probe_word
+    cmp  BYTE PTR fpu_probe_word, 0
+    jne  fpu_init_done
+    fnstcw fpu_probe_word
+    mov  ax, fpu_probe_word
+    and  ax, 103Fh
+    cmp  ax, 003Fh
+    jne  fpu_init_done
+    mov  fpu_mode, FPU_MODE_HW
+
+capture_clean_fpu:
+    ; Snapshot a clean 94-byte FPU state into fpu_clean_img and restore it
+    mov  bx, OFFSET fpu_clean_img
+    pushf
+    cli
+    call fpu_save_bx
+    call fpu_restore_bx
+    popf
+
+    ; Initialize thread 0''s FPU buffer
+    xor  bx, bx
+    call init_thread_fpu_slot
+
+    IFDEF FPU_DEFAULT_ALL
+        mov  bx, OFFSET tcb_table
+        or   [bx].TCB.tcb_flags, TCB_FLG_FPU
+        mov  fpu_owner, 0
+    ENDIF
+fpu_init_done:
+ENDIF
 
     ; 4. Save & hook BIOS/System vectors and calibrate IOStack offset
     SAVE_AND_HOOK 10h, old_int10, isr_int10
@@ -1373,7 +1682,7 @@ found_slot:
     mov  bx, DEFAULT_STACK_SIZE
 chk_min_stack:
     cmp  bx, 128
-    jae   resolve_stack_ptr
+    jae  resolve_stack_ptr
     mov  bx, 128
 resolve_stack_ptr:
     mov  stack_size, bx
@@ -1460,6 +1769,20 @@ resolve_stack_ptr:
         mov  WORD PTR es:[bx], OFFSET thread_exit
     ENDIF
 
+IFDEF USE_FPU
+    ; Initialize new thread''s 94-byte FPU context from clean template
+    push bx
+    mov  bx, di
+    call init_thread_fpu_slot
+    pop  bx
+    IFDEF FPU_DEFAULT_ALL
+        cmp  fpu_mode, FPU_MODE_NONE
+        je   skip_create_fpu_flg
+        or   [si].TCB.tcb_flags, TCB_FLG_FPU
+    skip_create_fpu_flg:
+    ENDIF
+ENDIF
+
     ; 7. Populate TCB registers & scheduler metadata
     cli
     mov  [si].TCB.reg_sp, bx
@@ -1497,6 +1820,99 @@ create_exit:
     xor  ah, ah
     ret
 thread_create ENDP
+
+;-----------------------------------------------------------------------------
+; int MT_API thread_enable_fpu(int enable)
+; Enables (enable != 0) or disables (enable == 0) FPU context saving for the
+; calling thread. Returns 1 if FPU context saving is now enabled, 0 otherwise.
+;-----------------------------------------------------------------------------
+thread_enable_fpu PROC PUBLIC USES si di ds, enable: WORD
+IFDEF USE_FPU
+    LOAD_DS_DGROUP
+    cmp  fpu_mode, FPU_MODE_NONE
+    je   fpu_en_unavailable
+
+    pushf
+    cli
+    mov  si, current_tcb
+    mov  dl, current_tid
+
+    cmp  enable, 0
+    je   fpu_do_disable
+
+    ; Already enabled for this thread?
+    test [si].TCB.tcb_flags, TCB_FLG_FPU
+    jnz  fpu_en_already
+
+    ; Initialize current thread''s 94-byte slot with clean FPU state
+    xor  bh, bh
+    mov  bl, dl
+    call init_thread_fpu_slot
+    or   [si].TCB.tcb_flags, TCB_FLG_FPU
+
+    ; Immediately switch live FPU ownership to current_tid so subsequent FPU
+    ; instructions in this time-slice start with a clean register stack
+    mov  bl, fpu_owner
+    cmp  bl, dl
+    je   load_curr_clean_fpu
+    cmp  bl, NO_THREAD
+    je   load_curr_clean_fpu
+    xor  bh, bh
+    shl  bx, 1
+    mov  bx, fpu_off_lut[bx]
+    add  bx, OFFSET fpu_table
+    call fpu_save_bx
+
+load_curr_clean_fpu:
+    xor  bh, bh
+    mov  bl, dl
+    shl  bx, 1
+    mov  bx, fpu_off_lut[bx]
+    add  bx, OFFSET fpu_table
+    call fpu_restore_bx
+    mov  fpu_owner, dl
+
+fpu_en_already:
+    popf
+    mov  ax, 1
+    ret
+
+fpu_do_disable:
+    and  [si].TCB.tcb_flags, NOT TCB_FLG_FPU
+    cmp  fpu_owner, dl
+    jne  fpu_dis_done
+    mov  fpu_owner, NO_THREAD
+fpu_dis_done:
+    popf
+fpu_en_unavailable:
+ENDIF
+    xor  ax, ax
+    ret
+thread_enable_fpu ENDP
+
+;-----------------------------------------------------------------------------
+; int MT_API thread_is_fpu_enabled(void)
+; Returns 1 if FPU context saving is active for the calling thread, else 0.
+;-----------------------------------------------------------------------------
+thread_is_fpu_enabled PROC PUBLIC
+IFDEF USE_FPU
+    push ds
+    mov  ds, cs:[dgroup_seg]
+    xor  ax, ax
+    cmp  fpu_mode, FPU_MODE_NONE
+    je   fpu_chk_done
+    mov  bx, current_tcb
+    test [bx].TCB.tcb_flags, TCB_FLG_FPU
+    jz   fpu_chk_done
+    inc  ax
+fpu_chk_done:
+    pop  ds
+    ret
+ELSE
+    xor  ax, ax
+    ret
+ENDIF
+thread_is_fpu_enabled ENDP
 
 ;-----------------------------------------------------------------------------
 ; void MT_API thread_yield(void)
@@ -1550,6 +1966,14 @@ thread_exit PROC PUBLIC
     mov  al, tid_bit_lut[bx]
     not  al
     and  active_mask, al
+
+IFDEF USE_FPU
+    ; Release FPU ownership if held by the exiting thread
+    cmp  fpu_owner, bl
+    jne  skip_exit_fpu_rel
+    mov  fpu_owner, NO_THREAD
+skip_exit_fpu_rel:
+ENDIF
 
     ; 2. Wake any threads waiting in thread_join(current_tid)
     xor  al, al

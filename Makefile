@@ -2,10 +2,11 @@
 # Makefile - MS-DOS Preemptive Multithreading Kernel & Demos (NMAKE)
 #
 # Usage Examples:
-#   nmake                                  (Defaults: MSC, SMALL, 8086)
+#   nmake                                  (Defaults: MSC, SMALL, 8086, FPU=NONE)
 #   nmake MODEL=TINY                       (MSC 7.00, Tiny model .COM files)
 #   nmake MODEL=HUGE CPU=186               (MSC 7.00, Huge model, 80186+)
-#   nmake MODEL=LARGE CPU=186              (MSC 7.00, Large model, 80186+)
+#   nmake MODEL=LARGE CPU=186 FPU=ALL      (MSC 7.00, Large model, 186+, FPU all)
+#   nmake FPU=OPTIN                        (MSC 7.00, Per-thread FPU opt-in)
 #   nmake COMPILER=BCC MODEL=COMPACT       (Borland C++ 3.1 + TASM 4.1)
 #   nmake COMPILER=WATCOM MODEL=SMALL      (OpenWatcom C/C++ + MASM 6.11)
 #   nmake clean
@@ -15,6 +16,7 @@
 COMPILER = MSC
 MODEL    = SMALL
 CPU      = 8086
+FPU      = NONE
 
 OBJDIR   = obj
 BINDIR   = bin
@@ -45,13 +47,23 @@ MCODE = $(MCODE:[HUGE]=h)
 EXT   = com
 !ENDIF
 
-# --- 2. Validate CPU option (8086 vs 186) ---
+# --- 2. Validate CPU (8086 vs 186) & FPU (NONE, OPTIN, ALL) options ---
 !IF "$(CPU)" == "186"
 ASM_CPU_FLAGS = /DUSE_186
 !ELSEIF "$(CPU)" == "8086"
 ASM_CPU_FLAGS =
 !ELSE
 !ERROR Invalid CPU="$(CPU)". Choose 8086 or 186.
+!ENDIF
+
+!IF "$(FPU)" == "NONE"
+ASM_FPU_FLAGS =
+!ELSEIF "$(FPU)" == "OPTIN"
+ASM_FPU_FLAGS = /DUSE_FPU
+!ELSEIF "$(FPU)" == "ALL"
+ASM_FPU_FLAGS = /DUSE_FPU /DFPU_DEFAULT_ALL
+!ELSE
+!ERROR Invalid FPU="$(FPU)". Choose NONE, OPTIN, or ALL.
 !ENDIF
 
 # --- 3. Configure toolchain commands & flags ---
@@ -66,7 +78,7 @@ CPU_FLAGS = $(CPU_FLAGS:186=/G1)
 CC        = cl
 AS        = ml
 CFLAGS    = /c /A$(MCODE) $(CPU_FLAGS) /Gy /Ox /W3 $(MSC_DBG) /DOFFSET_DISPLAY /nologo
-AFLAGS    = /c /W2 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) $(MSC_DBG) /DOFFSET_DISPLAY /nologo
+AFLAGS    = /c /W2 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) $(ASM_FPU_FLAGS) $(MSC_DBG) /DOFFSET_DISPLAY /nologo
 FO_FLAG   = /Fo$@
 AS_ARGS   = /Fo$@ $<
 LINK_CMD  = $(CC) /A$(MCODE) $(CPU_FLAGS) /nologo
@@ -79,7 +91,7 @@ CPU_FLAGS = $(CPU_FLAGS:186=-1)
 CC        = bcc
 AS        = tasm
 CFLAGS    = -c -m$(MCODE) $(CPU_FLAGS) -w -O2 -N- -DOFFSET_DISPLAY
-AFLAGS    = /m2 /mx /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) /DOFFSET_DISPLAY
+AFLAGS    = /m2 /mx /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) $(ASM_FPU_FLAGS) /DOFFSET_DISPLAY
 FO_FLAG   = -o$@
 AS_ARGS   = $<, $@
 LINK_CMD  = $(CC) -m$(MCODE) $(CPU_FLAGS)
@@ -92,7 +104,7 @@ CPU_FLAGS = $(CPU_FLAGS:186=-1)
 CC        = wcl
 AS        = ml
 CFLAGS    = -c -m$(MCODE) $(CPU_FLAGS) -wx -ox -zc -DOFFSET_DISPLAY
-AFLAGS    = /c /W3 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) /DOFFSET_DISPLAY
+AFLAGS    = /c /W3 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) $(ASM_FPU_FLAGS) /DOFFSET_DISPLAY
 FO_FLAG   = -fo=$@
 AS_ARGS   = /Fo$@ $<
 LINK_CMD  = $(CC) -m$(MCODE) $(CPU_FLAGS)
@@ -132,6 +144,7 @@ cls:
 	@echo Compiler:     $(COMPILER)
 	@echo Memory model: $(MODEL)
 	@echo Target CPU:   $(CPU)
+	@echo FPU support:  $(FPU)
 	@echo.
 
 dirs:

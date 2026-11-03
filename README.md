@@ -1,15 +1,15 @@
 # MTHREAD: Preemptive Multithreading for MS-DOS (8086 / MASM 6.11)
 
-`MTHREAD` is a compact, priority-based preemptive multithreading kernel, synchronization suite, interrupt-driven input library, and C/C++ framework for MS-DOS. Written in 8086/80186 assembly language for Microsoft Macro Assembler (MASM) 6.11 and Microsoft C/C++ 7.00 (with build support for Borland C++ 3.1 / TASM 4.1 and OpenWatcom), it supports all six 16-bit x86 memory models (`TINY`, `SMALL`, `MEDIUM`, `COMPACT`, `LARGE`, and `HUGE`).
+`MTHREAD` is a compact, priority-based preemptive multithreading kernel, synchronization suite, interrupt-driven input library, and C/C++ framework for MS-DOS. Written in 8086/80186 assembly language for Microsoft Macro Assembler (MASM) 6.11 and Microsoft C/C++ 7.00 (with build support for Borland C++ 3.1 / TASM 4.1 and OpenWatcom), it supports all six 16-bit x86 memory models (`TINY`, `SMALL`, `MEDIUM`, `COMPACT`, `LARGE`, and `HUGE`) as well as optional per-thread 8087/80287/80387+ hardware and software-emulated floating-point context switching.
 
 ---
 
 ## Project Layout & Build System
 
-The NMAKE `Makefile` places intermediate object files, static libraries, and linker map files in `obj\`, and links executable demos (`.exe` or `.com` in `TINY` model) into `bin\`:
+The NMAKE `Makefile` places intermediate object files and linker map files in `obj\`, static libraries in `lib\`, and executable demos (`.exe` or `.com` in `TINY` model) in `bin\`:
 
-### Static Libraries (`obj\`)
-* **`mthread.lib` (`mthread.asm`, `mthrwrap.cpp`):** Core preemptive scheduler, `INT 08h` timer and `INT 21h` DOS gatekeeper/swapper, BIOS reentrancy wrappers, termination/break/critical-error traps, synchronization primitives, and C++ lifecycle/thread/synchronization wrapper classes.
+### Static Libraries (`lib\`)
+* **`mthread.lib` (`mthread.asm`, `mthrwrap.cpp`):** Core preemptive scheduler, `INT 08h` timer and `INT 21h` DOS gatekeeper/swapper, optional 94-byte x87/emulator FPU context switcher, BIOS reentrancy wrappers, termination/break/critical-error traps, synchronization primitives, and C++ lifecycle/thread/synchronization wrapper classes.
 * **`video.lib` (`video.c`, `videohlp.asm`):** Direct `B800h` color text-mode video output (`video_putc`, `video_puts`, `video_putu8`, `video_putu16`, `video_putu32`, `video_puthex8`, `video_ruler`) and BIOS cursor positioning (`video_gotoxy`), with automatic `OFFSET_DISPLAY` centering on >80x25 text modes (such as 80x43, 80x50, and 132x43).
 * **`input.lib` (`kbd.asm`, `mouse.asm`):** Interrupt-driven keyboard (`INT 09h`) and mouse (`INT 33h`) handlers that wake threads via `event_set_isr()` with zero polling overhead.
 
@@ -20,13 +20,14 @@ The NMAKE `Makefile` places intermediate object files, static libraries, and lin
 
 ### Building with NMAKE
 ```dos
-nmake                                  (Defaults: COMPILER=MSC, MODEL=SMALL, CPU=8086)
-nmake MODEL=TINY                       (MSC 7.00, Tiny model .COM executables in bin\)
-nmake MODEL=LARGE CPU=186              (MSC 7.00, Large model, 80186+ instructions)
+nmake                                  (Defaults: MSC, SMALL, 8086, FPU=NONE)
+nmake MODEL=TINY                       (MSC 7.00, Tiny model .COM files in bin\)
 nmake MODEL=HUGE CPU=186               (MSC 7.00, Huge model with pointer normalization)
+nmake MODEL=LARGE CPU=186 FPU=ALL      (MSC 7.00, Large model, 186+, FPU enabled for all threads)
+nmake FPU=OPTIN                        (MSC 7.00, Per-thread FPU opt-in via thread_enable_fpu)
 nmake COMPILER=BCC MODEL=COMPACT       (Borland C++ 3.1 + TASM 4.1)
 nmake COMPILER=WATCOM MODEL=SMALL      (OpenWatcom C/C++ + MASM 6.11)
-nmake clean                            (Removes obj\, bin\, and temporary files)
+nmake clean                            (Removes obj\, lib\, bin\, and temporary files)
 ```
 
 ---
@@ -35,7 +36,7 @@ nmake clean                            (Removes obj\, bin\, and temporary files)
 
 ### 1. 64-Byte TCB-Resident Context & Zero-Residue User Stacks
 Unlike traditional real-mode context switchers that push all general-purpose registers onto the interrupted thread's stack, `MTHREAD` stores all 14 architectural 8086 registers (`AX` through `ES`, plus `SS`, `SP`, `IP`, `CS`, and `FLAGS`) inside a 64-byte **Thread Control Block (`TCB`)**:
-* When `INT 08h` or a voluntary context switch (`soft_context_switch`) fires, the entry stub immediately pops the 3-word interrupt frame (`IP`, `CS`, `FLAGS`) off the interrupted thread's stack directly into its `TCB`, records the clean `SS:SP`, and switches `SS:SP` onto a dedicated 512-byte internal scheduler stack (`isr_stack`).
+* When `INT 08h` or a voluntary context switch (`soft_context_switch`) fires, the entry stub immediately pops the 3-word interrupt frame (`IP`, `CS`, `FLAGS`) off the interrupted thread's stack directly into its `TCB`, records the clean `SS:SP`, and switches `SS:SP` onto a dedicated internal scheduler stack (`isr_stack`, 512 bytes by default or 768 bytes when built with `USE_FPU`).
 * **Benefit:** User thread stacks never have to absorb the stack footprint of the ROM BIOS timer ISR, chained `INT 1Ch` TSRs, or the scheduler itself.
 * **Fast Indexing & Pointer Caching:** The active TCB pointer is cached in `current_tcb` for single-instruction lookup on interrupt entry, and indexing `tcb_table[tid]` requires only a 6-bit left shift (`SHL BX, 6` on 80186+ or `MOV CL, 6 / SHL BX, CL` on strict 8086) with no `MUL` instruction.
 
@@ -65,7 +66,7 @@ MS-DOS is non-reentrant because `INT 21h` switches `SS:SP` onto one of three int
 
 ### 6. Multi-Layer Termination, Break & Critical Error Defense
 Because MS-DOS only restores `INT 22h`, `INT 23h`, and `INT 24h` when a program exits, terminating without unhooking `INT 08h` or `INT 21h` would leave timer interrupts firing into freed memory. `MTHREAD` prevents this with four layers of defense:
-1. **Idempotent `unhook_hardware` & `thread_abort()`:** Restores the 18.2 Hz PIT divisor, resets `STKHQQ` to the main thread's stack limit, clears `ErrorMode`, and unhooks all 20 interrupt vectors via `old_int21` (`AH=25h`). `thread_init()` automatically registers `thread_abort()` with the C runtime's `atexit()`.
+1. **Idempotent `unhook_hardware` & `thread_abort()`:** Restores the 18.2 Hz PIT divisor, resets `STKHQQ` to the main thread's stack limit, clears `ErrorMode`, and unhooks all 20 system/BIOS interrupt vectors (plus `INT 34h..3Eh` when FPU emulation hooks are active) via `old_int21` (`AH=25h`). `thread_init()` automatically registers `thread_abort()` with the C runtime's `atexit()`.
 2. **DOS Termination Traps:** `isr_int21` intercepts `AH=00h`, `AH=31h` (TSR), and `AH=4Ch`, and dedicated traps on `INT 20h` (which also catches CP/M-style `CALL 0005h` terminations) and `INT 27h` invoke `unhook_hardware` before chaining to DOS.
 3. **Cooperative & Emergency `Ctrl+C` / `Ctrl+Break` (`INT 1Bh` & `INT 23h`):** `isr_int1b` sets `break_flag = 1`, increments `break_count`, and clears the BIOS break bit at `0040:0071h` to suppress `^C` screen corruption. `isr_int23` allows the first two `Ctrl+C` presses to be handled cooperatively via `thread_is_break_requested()`; on the 3rd press (`break_count >= 3`), it calls `unhook_hardware` and returns with `STC / RETF` to force DOS to abort the program cleanly.
 4. **Critical Error Handler (`INT 24h`):** `isr_int24` suppresses the non-reentrant DOS `"Abort, Retry, Ignore, Fail?"` prompt, records the error code (`AH` and `DI`) for `thread_get_critical_error()`, and returns `AL = 03h` (Fail system call).
@@ -91,6 +92,13 @@ All synchronization primitives use 1-byte bitmask wait queues (`1 << tid`), prio
 * **Keyboard (`kbd.asm` / `MKeyboard`):** Hooks `INT 09h` (bracketed by `mt_enter_isr` / `mt_leave_isr`), chains to the ROM BIOS to translate scan codes, and inspects the BIOS keyboard ring-buffer pointers at `0040:001Ah` (head) and `0040:001Ch` (tail) plus `thread_is_break_requested()`. When a keystroke or break is present, it wakes the registered `mt_event_t` via `event_set_isr()`.
 * **Mouse (`mouse.asm` / `MMouse`):** Verifies that `INT 33h` is installed and not a bare `IRET` (`0CFh`), resets the driver, and registers a far callback via `INT 33h, AX=000Ch`. At IRQ time, `mouse_callback` updates a live state snapshot, enqueues events into a 16-slot ring buffer that **coalesces consecutive pure move events** (`MOUSE_EVT_MOVE`) so fast mouse motion never drops button clicks, and signals the registered `mt_event_t` via `event_set_isr()`.
 
+### 11. Floating-Point (`x87` & Software Emulator) Context Switching (`FPU=OPTIN | ALL`)
+When built with `FPU=OPTIN` (`/DUSE_FPU`) or `FPU=ALL` (`/DUSE_FPU /DFPU_DEFAULT_ALL`), `MTHREAD` provides per-thread 94-byte floating-point context management supporting both physical 8087/80287/80387+ coprocessors and C runtime software emulators (`INT 34h..3Eh`):
+* **Out-of-Band 94-Byte Context Table (`fpu_table`):** To preserve the 64-byte `TCB` size and fast 6-bit shift indexing, per-thread 94-byte `FSAVE`/`FRSTOR` frames are stored in a separate `fpu_table` in `DGROUP` indexed via `fpu_off_lut`.
+* **Lazy Owner-Tracked Switching (`fpu_owner` & `TCB_FLG_FPU`):** `MTHREAD` tracks which thread's state currently resides in the FPU via `fpu_owner`. Switching to an integer-only thread (where `TCB_FLG_FPU` is clear) or switching back to the thread that already owns the FPU executes zero `FSAVE`/`FRSTOR` instructions. A 94-byte `fpu_save_bx` + `fpu_restore_bx` exchange only occurs when an FPU-enabled thread preempts a *different* FPU-enabled thread.
+* **Dual Hardware & Software Emulator Support:** During `thread_init()`, `MTHREAD` inspects `INT 39h`. If a C runtime 8087 emulator is installed (`FPU_MODE_EMU`), `MTHREAD` hooks `INT 34h..3Eh` to prevent `isr_timer` from preempting an emulated floating-point opcode mid-instruction and uses `INT 39h` (`CD 39 37` / `CD 39 27`) to swap the emulator's 94-byte state. Otherwise, it probes for a physical x87 via `FNINIT` / `FNSTSW` / `FNSTCW` (`FPU_MODE_HW`) and uses native `FNSAVE` / `FRSTOR`.
+* **Runtime Opt-In / Opt-Out API:** Regardless of whether the build default is `FPU=OPTIN` or `FPU=ALL`, any thread can dynamically enable or disable FPU tracking at runtime via `thread_enable_fpu(1)` / `thread_enable_fpu(0)` and query its state via `thread_is_fpu_enabled()` (or `MThread::EnableFpu()`, `MThread::DisableFpu()`, and `MThread::IsFpuEnabled()` in C++).
+
 ---
 
 ## Limitations & Architectural Trade-Offs
@@ -98,9 +106,9 @@ All synchronization primitives use 1-byte bitmask wait queues (`1 << tid`), prio
 1. **Maximum of 8 Concurrent Threads (`MAX_THREADS = 8`):**
    Wait queues (`wait_mask`) and active thread masks are represented as 8-bit bitmasks (`1 << tid`) so scheduler scans and wakeups execute in constant time without pointer manipulation. Supporting more than 8 threads requires widening `wait_mask` to 16 bits (`DW`) or switching to intrusive doubly-linked TCB queues.
 2. **C Runtime Library (CRT) Non-Reentrancy:**
-   While `MTHREAD` serializes and swaps MS-DOS (`INT 21h`) and guards ROM BIOS interrupts, standard single-threaded DOS C runtime functions that mutate static internal buffers or global heap structures (`malloc`/`free`, `printf`/`fopen` sharing the same `FILE` stream, `strtok`, `rand`, `localtime`) are not automatically thread-safe. Concurrent C heap or shared-stream calls from worker threads should be serialized with a `mt_mutex_t` / `MMutex`.
-3. **8087 / 80287 FPU State Not Saved:**
-   To keep the `TCB` at 64 bytes and context switches under ~1,000 cycles on a 4.77 MHz 8088, the 94-byte x87 math coprocessor state (`FSAVE`/`FRSTOR`) is not saved on context switches. Floating-point operations should either be confined to a single thread or guarded with a mutex.
+   While `MTHREAD` serializes and swaps MS-DOS (`INT 21h`), guards ROM BIOS interrupts, and (when built with `FPU=OPTIN` or `FPU=ALL`) saves/restores per-thread x87/emulator floating-point state, standard single-threaded DOS C runtime functions that mutate static internal buffers or global heap structures (`malloc`/`free`, `printf`/`sprintf`/`strtod`, `fopen` sharing the same `FILE` stream, `strtok`, `rand`, `localtime`) are not automatically thread-safe. Concurrent C heap, formatted I/O, or shared-stream calls from worker threads should be serialized with a `mt_mutex_t` / `MMutex`.
+3. **Floating-Point Context Cost & `FPU=NONE` Default:**
+   To save ~850 bytes of `DGROUP` memory in pure-integer applications, FPU context switching is disabled by default (`FPU=NONE`). When enabled (`FPU=OPTIN` or `FPU=ALL`), lazy `fpu_owner` tracking avoids `FSAVE`/`FRSTOR` overhead whenever only one thread actively uses the FPU; when multiple threads contend for the FPU concurrently, each FPU ownership handoff incurs ~1,600–1,800 clock cycles (~350 µs on a 4.77 MHz 8088/8087).
 4. **Two-Way `IOStack` Swap Buffer:**
    A single 400-byte `io_swap_buf` is statically allocated to resolve `IOStack` collisions between two concurrent console threads. If a *third* thread simultaneously enters `INT 21h` (`AH = 01h..0Ch`), it blocks in `STATE_WAIT_IO` (with priority inheritance) until one of the first two exits.
 5. **Blocking Raw BIOS Calls (`INT 16h, AH=00h`):**

@@ -192,6 +192,18 @@ public:
         return ret;
     }
 
+    static int EnableFpu( ) {
+        return thread_enable_fpu( 1 );
+    }
+
+    static void DisableFpu( ) {
+        thread_enable_fpu( 0 );
+    }
+
+    static int IsFpuEnabled( ) {
+        return thread_is_fpu_enabled( );
+    }
+
     static void Yield( ) {
         thread_yield( );
     }
