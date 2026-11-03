@@ -18,6 +18,7 @@ CPU      = 8086
 
 OBJDIR   = obj
 BINDIR   = bin
+LIBDIR   = lib
 
 # --- 1. Map memory model to compiler short code (MCODE) & extension (EXT) ---
 EXT   = exe
@@ -119,7 +120,7 @@ LIB_END   =
 	$(LINK_CMD) $(FE_FLAG) $**
 
 # --- 5. Build targets & dependencies ---
-LIBS    = $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib $(OBJDIR)\input.lib
+LIBS    = $(LIBDIR)\mthread.lib $(LIBDIR)\video.lib $(LIBDIR)\input.lib
 DEMOS   = $(BINDIR)\cdemo.$(EXT) $(BINDIR)\cinput.$(EXT) $(BINDIR)\csync.$(EXT) $(BINDIR)\cppdemo.$(EXT) $(BINDIR)\cppinput.$(EXT) $(BINDIR)\cppsync.$(EXT)
 TARGETS = $(LIBS) $(DEMOS)
 
@@ -135,6 +136,7 @@ cls:
 
 dirs:
 	@if not exist $(OBJDIR)\nul mkdir $(OBJDIR)
+	@if not exist $(LIBDIR)\nul mkdir $(LIBDIR)
 	@if not exist $(BINDIR)\nul mkdir $(BINDIR)
 
 # Object header / include dependencies (compiled via inference rules)
@@ -146,37 +148,37 @@ $(OBJDIR)\cppdemo.obj $(OBJDIR)\cppinput.obj $(OBJDIR)\cppsync.obj:             
 $(OBJDIR)\cinput.obj $(OBJDIR)\cppinput.obj:                                        input.h
 
 # Static libraries
-$(OBJDIR)\mthread.lib: $(OBJDIR)\mthread.obj $(OBJDIR)\mthrwrap.obj
+$(LIBDIR)\mthread.lib: $(OBJDIR)\mthread.obj $(OBJDIR)\mthrwrap.obj
 	-if exist $@ del $@
 	$(LIB_CMD) $@ +$(**: = +)$(LIB_END)
 
-$(OBJDIR)\vid.lib: $(OBJDIR)\video.obj $(OBJDIR)\videohlp.obj
+$(LIBDIR)\video.lib: $(OBJDIR)\video.obj $(OBJDIR)\videohlp.obj
 	-if exist $@ del $@
 	$(LIB_CMD) $@ +$(**: = +)$(LIB_END)
 
-$(OBJDIR)\input.lib: $(OBJDIR)\kbd.obj $(OBJDIR)\mouse.obj
+$(LIBDIR)\input.lib: $(OBJDIR)\kbd.obj $(OBJDIR)\mouse.obj
 	-if exist $@ del $@
 	$(LIB_CMD) $@ +$(**: = +)$(LIB_END)
 
 # Demo executables (linked via {$(OBJDIR)}.obj{$(BINDIR)}.$(EXT) inference rule)
-$(BINDIR)\cdemo.$(EXT):    $(OBJDIR)\cdemo.obj    $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib
-$(BINDIR)\cinput.$(EXT):   $(OBJDIR)\cinput.obj   $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib $(OBJDIR)\input.lib
-$(BINDIR)\csync.$(EXT):    $(OBJDIR)\csync.obj    $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib
-$(BINDIR)\cppdemo.$(EXT):  $(OBJDIR)\cppdemo.obj  $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib
-$(BINDIR)\cppinput.$(EXT): $(OBJDIR)\cppinput.obj $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib $(OBJDIR)\input.lib
-$(BINDIR)\cppsync.$(EXT):  $(OBJDIR)\cppsync.obj  $(OBJDIR)\mthread.lib $(OBJDIR)\vid.lib
+$(BINDIR)\cdemo.$(EXT):    $(OBJDIR)\cdemo.obj    $(LIBDIR)\mthread.lib $(LIBDIR)\video.lib
+$(BINDIR)\cinput.$(EXT):   $(OBJDIR)\cinput.obj   $(LIBDIR)\mthread.lib $(LIBDIR)\video.lib $(LIBDIR)\input.lib
+$(BINDIR)\csync.$(EXT):    $(OBJDIR)\csync.obj    $(LIBDIR)\mthread.lib $(LIBDIR)\video.lib
+$(BINDIR)\cppdemo.$(EXT):  $(OBJDIR)\cppdemo.obj  $(LIBDIR)\mthread.lib $(LIBDIR)\video.lib
+$(BINDIR)\cppinput.$(EXT): $(OBJDIR)\cppinput.obj $(LIBDIR)\mthread.lib $(LIBDIR)\video.lib $(LIBDIR)\input.lib
+$(BINDIR)\cppsync.$(EXT):  $(OBJDIR)\cppsync.obj  $(LIBDIR)\mthread.lib $(LIBDIR)\video.lib
 
 clean:
 	-if exist $(OBJDIR)\*.obj del $(OBJDIR)\*.obj
-	-if exist $(OBJDIR)\*.lib del $(OBJDIR)\*.lib
 	-if exist $(OBJDIR)\*.map del $(OBJDIR)\*.map
-	-if exist $(OBJDIR)\*.bak del $(OBJDIR)\*.bak
+	-if exist $(LIBDIR)\*.lib del $(LIBDIR)\*.lib
 	-if exist $(BINDIR)\*.exe del $(BINDIR)\*.exe
 	-if exist $(BINDIR)\*.com del $(BINDIR)\*.com
 	-if exist $(BINDIR)\*.map del $(BINDIR)\*.map
 	-if exist mttest.log del mttest.log
 	-if exist $(BINDIR)\mttest.log del $(BINDIR)\mttest.log
 	-if exist $(OBJDIR)\nul rmdir $(OBJDIR)
+	-if exist $(LIBDIR)\nul rmdir $(LIBDIR)
 	-if exist $(BINDIR)\nul rmdir $(BINDIR)
 
 .PHONY: all cls dirs clean

@@ -10,7 +10,7 @@ The NMAKE `Makefile` places intermediate object files, static libraries, and lin
 
 ### Static Libraries (`obj\`)
 * **`mthread.lib` (`mthread.asm`, `mthrwrap.cpp`):** Core preemptive scheduler, `INT 08h` timer and `INT 21h` DOS gatekeeper/swapper, BIOS reentrancy wrappers, termination/break/critical-error traps, synchronization primitives, and C++ lifecycle/thread/synchronization wrapper classes.
-* **`vid.lib` (`video.c`, `videohlp.asm`):** Direct `B800h` color text-mode video output (`video_putc`, `video_puts`, `video_putu8`, `video_putu16`, `video_putu32`, `video_puthex8`, `video_ruler`) and BIOS cursor positioning (`video_gotoxy`), with automatic `OFFSET_DISPLAY` centering on >80x25 text modes (such as 80x43, 80x50, and 132x43).
+* **`video.lib` (`video.c`, `videohlp.asm`):** Direct `B800h` color text-mode video output (`video_putc`, `video_puts`, `video_putu8`, `video_putu16`, `video_putu32`, `video_puthex8`, `video_ruler`) and BIOS cursor positioning (`video_gotoxy`), with automatic `OFFSET_DISPLAY` centering on >80x25 text modes (such as 80x43, 80x50, and 132x43).
 * **`input.lib` (`kbd.asm`, `mouse.asm`):** Interrupt-driven keyboard (`INT 09h`) and mouse (`INT 33h`) handlers that wake threads via `event_set_isr()` with zero polling overhead.
 
 ### Demo Executables (`bin\`)
