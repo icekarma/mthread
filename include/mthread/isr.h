@@ -5,14 +5,14 @@
 #if !defined _ISR_H_
 #define _ISR_H_
 
+#include <mthread/synchron.h>
+
 #if defined __cplusplus
 extern "C" {
 #endif
 
-#include <mthread/synchron.h>
-
 /*===========================================================================
- * Thread management API
+ * ISR management API
  *===========================================================================*/
 
 /* ISR entry/exit for incrementing/decrementing bios_lock from external

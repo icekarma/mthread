@@ -30,19 +30,19 @@ extern "C" {
 #define MT_PRIO_HIGHEST_MINUS 6
 #define MT_PRIO_HIGHEST       7
 
-/* PIT tick rate shift factors for thread_init(pit_shift):
+/* PIT tick rate shift factors for thread_init's pit_shift argument:
 *   0 = 1x stock ( 18.2 Hz / 54.9 ms)
 *   1 = 2x stock ( 36.4 Hz / 27.5 ms)
 *   2 = 4x stock ( 72.8 Hz / 13.7 ms)
 *   3 = 8x stock (145.6 Hz /  6.9 ms)
 */
-#define MT_TICK_18HZ        0
-#define MT_TICK_36HZ        1
-#define MT_TICK_73HZ        2
-#define MT_TICK_146HZ       3
+#define MT_TICK_18HZ  0
+#define MT_TICK_36HZ  1
+#define MT_TICK_73HZ  2
+#define MT_TICK_146HZ 3
 
 /* Thread entry point prototype: void MT_API my_thread(void *arg) */
-typedef void ( MT_API* thread_func_t )( void* arg );
+typedef void ( MT_API *thread_func_t )( void* arg );
 
 /* Core Lifecycle API */
 void          MT_API thread_init( unsigned char pit_shift, unsigned char main_prio );

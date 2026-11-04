@@ -1,3 +1,7 @@
+/*===========================================================================
+ * mthrmgr.h - mthread lifecycle manager
+ *===========================================================================*/
+
 #if !defined _MTHRMGR_H_
 #define _MTHRMGR_H_
 
@@ -8,9 +12,9 @@
 #include <mthread/thread.h>
 #include <mthread/atomic.h>
 
-//=======================================================
-// Reference-counted singleton lifecycle manager
-//=======================================================
+//===========================================================================
+// Class MThreadManager: Reference-counted singleton lifecycle manager
+//===========================================================================
 
 class MThreadManager {
 

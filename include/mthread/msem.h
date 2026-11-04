@@ -1,3 +1,7 @@
+/*===========================================================================
+ * msem.h - Definitions for C++ interface for mthread's semaphore synchronization primitive
+ *===========================================================================*/
+
 #if !defined _MSEM_H_
 #define _MSEM_H_
 
@@ -7,9 +11,9 @@
 
 #include <mthread/synchron.h>
 
-//=======================================================
-// MSemaphore
-//=======================================================
+//===========================================================================
+// Class MSemaphore - C++ interface for mthread's semaphore synchronization primitive
+//===========================================================================
 
 class MSemaphore {
 

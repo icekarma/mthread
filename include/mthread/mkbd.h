@@ -1,5 +1,5 @@
 /*===========================================================================
- * mkbd.h - Definitions for C++ Interface to Interrupt-Driven Keyboard (INT 09h) Module
+ * mkbd.h - Definitions for C++ interface to interrupt-driven keyboard (INT 09h) module
  *===========================================================================*/
 
 #if !defined _MKBD_H_
@@ -12,11 +12,9 @@
 #include <mthread/kbd.h>
 #include <mthread/mevent.h>
 
-#if defined __cplusplus
-
-/*===========================================================================
- * Class MKeyboard - C++ Interface to Interrupt-Driven Keyboard (INT 09h) Module
- *===========================================================================*/
+//===========================================================================
+// Class MKeyboard - C++ interface to interrupt-driven keyboard (INT 09h) module
+//===========================================================================
 
 class MKeyboard {
 
@@ -46,7 +44,5 @@ public:
     }
 
 };
-
-#endif /* defined __cplusplus */
 
 #endif /* !defined _MKBD_H_ */

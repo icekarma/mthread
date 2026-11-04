@@ -1,33 +1,29 @@
 /*===========================================================================
- * kbd.h - Definitions for Interrupt-Driven Keyboard (INT 09h) Module
+ * kbd.h - Definitions for interrupt-driven keyboard (INT 09h) module
  *===========================================================================*/
 
 #if !defined _KBD_H_
 #define _KBD_H_
 
-#include <mthread/mthread.h>
+#include <mthread/synchron.h>
 
 #if defined __cplusplus
 extern "C" {
 #endif
 
-#if !defined MT_API
-#   define MT_API __cdecl
-#endif
-
 /*===========================================================================
- * C Keyboard API
+ * Keyboard API
  *===========================================================================*/
 
-/* BIOS Shift/Modifier flags returned by kbd_get_modifiers() (0040:0017h) */
-#define KBD_MOD_RSHIFT      0x01
-#define KBD_MOD_LSHIFT      0x02
-#define KBD_MOD_CTRL        0x04
-#define KBD_MOD_ALT         0x08
-#define KBD_MOD_SCROLLLOCK  0x10
-#define KBD_MOD_NUMLOCK     0x20
-#define KBD_MOD_CAPSLOCK    0x40
-#define KBD_MOD_INSERT      0x80
+/* BIOS shift/modifier flags returned by kbd_get_modifiers() (0040:0017h) */
+#define KBD_MOD_RSHIFT     0x01
+#define KBD_MOD_LSHIFT     0x02
+#define KBD_MOD_CTRL       0x04
+#define KBD_MOD_ALT        0x08
+#define KBD_MOD_SCROLLLOCK 0x10
+#define KBD_MOD_NUMLOCK    0x20
+#define KBD_MOD_CAPSLOCK   0x40
+#define KBD_MOD_INSERT     0x80
 
 /* Hooks INT 09h and signals `notify_ev` via event_set_isr() when keystrokes
  * enter the BIOS keyboard buffer (or when Ctrl+Break is pressed). */

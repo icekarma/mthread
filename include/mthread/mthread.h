@@ -1,5 +1,5 @@
 /*===========================================================================
- * mthread.h - Preemptive Multithreading Library for MS-DOS (8086 / MASM 6.11)
+ * mthread.h - Preemptive multithreading kernel for MS-DOS
  *===========================================================================*/
 
 #if !defined _MTHREAD_H_

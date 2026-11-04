@@ -1,3 +1,7 @@
+/*===========================================================================
+ * mcondvar.h - Definitions for C++ interface for mthread's condition variable synchronization primitive
+ *===========================================================================*/
+
 #if !defined _MCONDVAR_H_
 #define _MCONDVAR_H_
 
@@ -8,9 +12,9 @@
 #include <mthread/synchron.h>
 #include <mthread/mmutex.h>
 
-//=======================================================
-// MCondVar
-//=======================================================
+//===========================================================================
+// Class MCondVar - C++ interface for mthread's condition variable synchronization primitive
+//===========================================================================
 
 class MCondVar {
 

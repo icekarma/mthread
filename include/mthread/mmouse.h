@@ -1,5 +1,5 @@
 /*===========================================================================
- * mmouse.h - Callback-Driven Mouse (INT 33h) Module
+ * mmouse.h - Definitions for C++ interface to callback-driven mouse (INT 33h) module
  *===========================================================================*/
 
 #if !defined _MMOUSE_H_
@@ -11,11 +11,9 @@
 
 #include <mthread/mouse.h>
 
-#if defined __cplusplus
-
-/*===========================================================================
- * Class MMouse - C++ Interface to Callback-Driven Mouse (INT 33h) Module
- *===========================================================================*/
+//===========================================================================
+// Class MMouse - C++ interface to callback-driven mouse (INT 33h) module
+//===========================================================================
 
 class MMouse {
 
@@ -69,6 +67,5 @@ private:
     int buttons_count;
 
 };
-#endif /* defined __cplusplus */
 
 #endif /* !defined _MMOUSE_H_ */

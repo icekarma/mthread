@@ -1,3 +1,7 @@
+/*===========================================================================
+ * mlkguard.h - Definitions for mthread's C++ lock guard
+ *===========================================================================*/
+
 #if !defined _MLKGUARD_H_
 #define _MLKGUARD_H_
 
@@ -7,9 +11,9 @@
 
 #include <mthread/mmutex.h>
 
-//=======================================================
-// MLockGuard
-//=======================================================
+//===========================================================================
+// Class MLockGuard - mthread's C++ lock guard
+//===========================================================================
 
 class MLockGuard {
 
@@ -19,18 +23,18 @@ class MLockGuard {
 public:
 
     MLockGuard( MMutex& mutex ):
-        mtx ( mutex )
+        mutex ( mutex )
     {
-        mtx.Lock( );
+        mutex.Lock( );
     }
 
     ~MLockGuard( ) {
-        mtx.Unlock( );
+        mutex.Unlock( );
     }
 
 private:
 
-    MMutex& mtx;
+    MMutex& mutex;
 
 };
 

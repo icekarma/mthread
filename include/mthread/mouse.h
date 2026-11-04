@@ -1,5 +1,5 @@
 /*===========================================================================
- * mouse.h - Callback-Driven Mouse (INT 33h) Module
+ * mouse.h - Callback-driven mouse (INT 33h) module
  *===========================================================================*/
 
 #if !defined _MOUSE_H_
@@ -11,12 +11,8 @@
 extern "C" {
 #endif
 
-#if !defined MT_API
-#   define MT_API __cdecl
-#endif
-
 /*===========================================================================
- * C Mouse API
+ * Mouse API
  *===========================================================================*/
 
 /* INT 33h callback event mask bits */
