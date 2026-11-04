@@ -61,7 +61,7 @@ public:
             return MT_ERR_INVALID;
         }
 
-        thread_init( pit_shift, main_prio );
+        threading_init( pit_shift, main_prio );
         return MT_ERR_NONE;
     }
 
@@ -71,22 +71,22 @@ public:
         }
 
         thread_join_all( );
-        thread_shutdown( );
+        threading_shutdown( );
 
         s_active = 0;
     }
 
     static void Abort( ) {
         s_active = 0;
-        thread_abort( );
+        threading_abort( );
     }
 
     static int IsBreakRequested( ) {
-        return thread_is_break_requested( );
+        return threading_is_break_requested( );
     }
 
     static unsigned int GetCriticalError( ) {
-        return thread_get_critical_error( );
+        return threading_get_critical_error( );
     }
 
     static int IsActive( ) {

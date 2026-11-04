@@ -275,7 +275,7 @@ int main( void ) {
     cond_init( &g_batch_cv );
 
     /* Start scheduler at 72.8 Hz (4x stock PIT rate) */
-    thread_init( MT_TICK_73HZ, MT_PRIO_LOW );
+    threading_init( MT_TICK_73HZ, MT_PRIO_LOW );
 
     /* Create threads for each demo participant */
     thread_create( low_lock_holder,  NULL, NULL, 1024, MT_PRIO_LOW    );
@@ -296,7 +296,7 @@ int main( void ) {
 
     /* Main loop: wait on Condition Variable for batches while checking keyboard */
     while ( g_running ) {
-        if ( thread_is_break_requested( ) ) {
+        if ( threading_is_break_requested( ) ) {
             g_running = 0;
             break;
         }
@@ -330,7 +330,7 @@ int main( void ) {
     cond_broadcast( &g_batch_cv );
 
     thread_join_all( );
-    thread_shutdown( );
+    threading_shutdown( );
 
     video_gotoxy( 22, 0 );
     printf( "\rSyncDemo complete: %u priority-inherited handoffs, %u CondVar batches.\n", g_pi_handoffs, last_batch_seen );

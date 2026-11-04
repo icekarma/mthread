@@ -43,7 +43,7 @@ join_wait_mask  DB  MAX_THREADS DUP (0) ; Per-TID bitmask of thread_join() waite
 
 ; Termination, break & critical error state
 threads_active  DB  0                   ; 1 while vectors are hooked, 0 when unhooked
-atexit_regd     DB  0                   ; 1 once atexit(thread_abort) is registered
+atexit_regd     DB  0                   ; 1 once atexit(threading_abort) is registered
 break_flag      DB  0                   ; 1 if Ctrl+C or Ctrl+Break was pressed
 break_count     DB  0                   ; Consecutive Ctrl+C count (>=3 force-aborts)
 crit_err_code   DW  0                   ; Last INT 24h error (high=AH, low=DI)
@@ -91,12 +91,12 @@ ENDIF
 .CODE
 
 ; CS-reachable variables for interrupt entry stubs before DS is loaded
-dgroup_seg      DW  0                   ; Initialized to SEG DGROUP in thread_init
+dgroup_seg      DW  0                   ; Initialized to SEG DGROUP in threading_init
 scratch_ds      DW  0                   ; Temp storage during context save
 scratch_bx      DW  0                   ; Temp storage during context save
 bios_lock       DB  0                   ; >0 when executing inside wrapped BIOS int
 in_scheduler    DB  0                   ; Reentrancy guard for scheduler
-calib_iostack   DB  0                   ; 1 during thread_init IOStack probe
+calib_iostack   DB  0                   ; 1 during threading_init IOStack probe
 
 old_int08       DD  0                   ; Saved BIOS Timer (IRQ0)
 old_int10       DD  0                   ; Saved BIOS Video
@@ -1330,25 +1330,25 @@ unhook_hardware ENDP
 ;=============================================================================
 
 ;-----------------------------------------------------------------------------
-; void MT_API thread_init(unsigned char pit_shift, unsigned char main_prio)
+; void MT_API threading_init(unsigned char pit_shift, unsigned char main_prio)
 ;-----------------------------------------------------------------------------
-thread_init PROC PUBLIC USES si di ds, pit_shift: BYTE, main_prio: BYTE
+threading_init PROC PUBLIC USES si di ds, pit_shift: BYTE, main_prio: BYTE
     LOAD_DS_DGROUP
     mov  cs:[dgroup_seg], ax
 
-    ; 1. Register thread_abort with C runtime atexit() once
+    ; 1. Register threading_abort with C runtime atexit() once
     cmp  atexit_regd, 0
     jne  skip_atexit_reg
     mov  atexit_regd, 1
     IF @CodeSize
-        mov  ax, SEG thread_abort
+        mov  ax, SEG threading_abort
         push ax
-        mov  ax, OFFSET thread_abort
+        mov  ax, OFFSET threading_abort
         push ax
         call atexit
         add  sp, 4
     ELSE
-        mov  ax, OFFSET thread_abort
+        mov  ax, OFFSET threading_abort
         push ax
         call atexit
         add  sp, 2
@@ -1558,51 +1558,51 @@ set_pit_div:
 
     ; Done
     ret
-thread_init ENDP
+threading_init ENDP
 
 ;-----------------------------------------------------------------------------
-; void MT_API thread_abort(void)
+; void MT_API threading_abort(void)
 ; Idempotent emergency/atexit shutdown: unhooks PIT and all interrupt vectors.
 ;-----------------------------------------------------------------------------
-thread_abort PROC PUBLIC USES ds
+threading_abort PROC PUBLIC USES ds
     LOAD_DS_DGROUP
     call unhook_hardware
     ret
-thread_abort ENDP
+threading_abort ENDP
 
 ;-----------------------------------------------------------------------------
-; void MT_API thread_shutdown(void)
+; void MT_API threading_shutdown(void)
 ;-----------------------------------------------------------------------------
-thread_shutdown PROC PUBLIC USES si di ds
+threading_shutdown PROC PUBLIC USES si di ds
     LOAD_DS_DGROUP
     call unhook_hardware
     call reap_zombie_stacks
     ret
-thread_shutdown ENDP
+threading_shutdown ENDP
 
 ;-----------------------------------------------------------------------------
-; int MT_API thread_is_break_requested(void)
+; int MT_API threading_is_break_requested(void)
 ;-----------------------------------------------------------------------------
-thread_is_break_requested PROC PUBLIC
+threading_is_break_requested PROC PUBLIC
     push ds
     mov  ds, cs:[dgroup_seg]
     xor  ax, ax
     mov  al, break_flag
     pop  ds
     ret
-thread_is_break_requested ENDP
+threading_is_break_requested ENDP
 
 ;-----------------------------------------------------------------------------
-; unsigned int MT_API thread_get_critical_error(void)
+; unsigned int MT_API threading_get_critical_error(void)
 ;-----------------------------------------------------------------------------
-thread_get_critical_error PROC PUBLIC
+threading_get_critical_error PROC PUBLIC
     push ds
     mov  ds, cs:[dgroup_seg]
     xor  ax, ax
     xchg ax, crit_err_code
     pop  ds
     ret
-thread_get_critical_error ENDP
+threading_get_critical_error ENDP
 
 ;-----------------------------------------------------------------------------
 ; reap_zombie_stacks - Lazily free() auto-allocated stacks of exited threads

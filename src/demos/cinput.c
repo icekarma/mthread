@@ -137,7 +137,7 @@ static void MT_API input_worker( void* arg ) {
 
         /* Sleep on shared event until INT 09h or INT 33h calls event_set_isr() */
         event_wait( &g_input_ev );
-        if ( !g_running || thread_is_break_requested( ) ) {
+        if ( !g_running || threading_is_break_requested( ) ) {
             g_running = 0;
             break;
         }
@@ -292,7 +292,7 @@ int main( void ) {
     event_init( &g_input_ev, 0, 0 );
 
     /* 2. Start scheduler at 72.8 Hz (4x stock PIT rate) */
-    thread_init( MT_TICK_73HZ, MT_PRIO_LOW );
+    threading_init( MT_TICK_73HZ, MT_PRIO_LOW );
 
     /* 3. Hook INT 09h keyboard ISR and INT 33h mouse callback */
     kbd_init( &g_input_ev );
@@ -309,7 +309,7 @@ int main( void ) {
 
     /* Main thread sleeps periodically while checking for Ctrl+Break and QUIT button */
     while ( g_running ) {
-        if ( thread_is_break_requested( ) ) {
+        if ( threading_is_break_requested( ) ) {
             g_running = 0;
             event_set( &g_input_ev );
             break;
@@ -327,7 +327,7 @@ int main( void ) {
     thread_join( t_inp );
     thread_join( t_cmp );
     thread_join( t_spn );
-    thread_shutdown( );
+    threading_shutdown( );
 
     video_gotoxy( 22, 0 );
     printf( "\rInpDemo complete: %u IRQ wakeups (%u keyboard, %u mouse events).\n", g_input_wakes, g_kbd_events, g_mouse_events );

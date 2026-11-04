@@ -215,7 +215,7 @@ int main( int argc, char* argv[] ) {
     remove( "MTTEST.LOG" );
 
     /* Initialize scheduler at 4x stock PIT rate (72.8 Hz / 13.7 ms quantum) */
-    thread_init( MT_TICK_73HZ, MT_PRIO_NORMAL );
+    threading_init( MT_TICK_73HZ, MT_PRIO_NORMAL );
 
     /* Spawn a pair of normal-priority compute threads with auto-allocated stacks */
     t1 = thread_create( compute_worker, NULL, NULL, 0, MT_PRIO_NORMAL );
@@ -229,7 +229,7 @@ int main( int argc, char* argv[] ) {
 
     /* Main loop: exercises DOS IOStack (_kbhit/_getch & DOS AH=02h) */
     while ( g_running ) {
-        if ( thread_is_break_requested( ) ) {
+        if ( threading_is_break_requested( ) ) {
             g_running = 0;
             break;
         }
@@ -255,7 +255,7 @@ int main( int argc, char* argv[] ) {
     thread_join( t2 );
     thread_join( t3 );
     thread_join( t4 );
-    thread_shutdown( );
+    threading_shutdown( );
 
     /* Move cursor below table before returning to COMMAND.COM */
     video_gotoxy( 22, 0 );

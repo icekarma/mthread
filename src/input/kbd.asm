@@ -16,10 +16,10 @@ ENDIF
 
 INCLUDE mthread/mthread.inc
 
-EXTERNDEF C event_set_isr:             PROC
-EXTERNDEF C mt_enter_isr:              PROC
-EXTERNDEF C mt_leave_isr:              PROC
-EXTERNDEF C thread_is_break_requested: PROC
+EXTERNDEF C event_set_isr:                PROC
+EXTERNDEF C mt_enter_isr:                 PROC
+EXTERNDEF C mt_leave_isr:                 PROC
+EXTERNDEF C threading_is_break_requested: PROC
 
 ;=============================================================================
 ; DATA SEGMENT (DGROUP)
@@ -64,7 +64,7 @@ isr_int09 PROC FAR
     mov  ds, cs:[kbd_dgroup_seg]
 
     ; Did this keystroke trigger Ctrl+Break (INT 1Bh)?
-    call thread_is_break_requested
+    call threading_is_break_requested
     or   ax, ax
     jnz  signal_kbd_event
 
