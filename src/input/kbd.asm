@@ -173,16 +173,14 @@ kbd_shutdown ENDP
 ;-----------------------------------------------------------------------------
 ; int MT_API kbd_available(void)
 ;-----------------------------------------------------------------------------
-kbd_available PROC PUBLIC
-    push es
+kbd_available PROC PUBLIC USES es
     xor  ax, ax
     mov  es, ax
     mov  dx, es:[041Ah]
     cmp  dx, es:[041Ch]
     je   kbd_not_avail
-    mov  ax, 1
+    inc  ax
 kbd_not_avail:
-    pop  es
     ret
 kbd_available ENDP
 
@@ -190,33 +188,24 @@ kbd_available ENDP
 ; unsigned int MT_API kbd_getkey(void)
 ; Non-blocking: returns 16-bit key (AL=ASCII, AH=scan) or 0 if buffer empty.
 ;-----------------------------------------------------------------------------
-kbd_getkey PROC PUBLIC
-    push es
+kbd_getkey PROC PUBLIC USES es
     xor  ax, ax
     mov  es, ax
     mov  dx, es:[041Ah]
     cmp  dx, es:[041Ch]
-    pop  es
     je   kbd_no_key
-
-    xor  ah, ah
     int  16h
-    ret
-
 kbd_no_key:
-    xor  ax, ax
     ret
 kbd_getkey ENDP
 
 ;-----------------------------------------------------------------------------
 ; unsigned char MT_API kbd_get_modifiers(void)
 ;-----------------------------------------------------------------------------
-kbd_get_modifiers PROC PUBLIC
-    push es
+kbd_get_modifiers PROC PUBLIC USES es
     xor  ax, ax
     mov  es, ax
     mov  al, es:[0417h]
-    pop  es
     ret
 kbd_get_modifiers ENDP
 
