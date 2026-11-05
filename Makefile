@@ -16,7 +16,7 @@
 COMPILER = MSC
 MODEL    = SMALL
 CPU      = 8086
-FPU      = NONE
+FPU      = OPTIN
 
 OBJDIR   = obj
 BINDIR   = bin
@@ -146,7 +146,8 @@ LIB_END   =
 
 # --- 5. Build targets & dependencies ---
 LIBS    = $(LIBDIR)\mthread.lib $(LIBDIR)\video.lib $(LIBDIR)\input.lib
-DEMOS   = $(BINDIR)\cdemo.$(EXT) $(BINDIR)\cinput.$(EXT) $(BINDIR)\csync.$(EXT) $(BINDIR)\cppdemo.$(EXT) $(BINDIR)\cppinput.$(EXT) $(BINDIR)\cppsync.$(EXT)
+DEMOS   =   $(BINDIR)\cdemo.$(EXT)   $(BINDIR)\cfpu.$(EXT)   $(BINDIR)\cinput.$(EXT)   $(BINDIR)\csync.$(EXT) \
+          $(BINDIR)\cppdemo.$(EXT) $(BINDIR)\cppfpu.$(EXT) $(BINDIR)\cppinput.$(EXT) $(BINDIR)\cppsync.$(EXT)
 TARGETS = $(LIBS) $(DEMOS)
 
 all: cls dirs $(TARGETS)
@@ -167,12 +168,12 @@ dirs:
 
 # Object header / include dependencies (compiled via inference rules)
 
-$(OBJDIR)\mthread.obj $(OBJDIR)\videohlp.obj $(OBJDIR)\kbd.obj $(OBJDIR)\mouse.obj: $(INCPATH)\mthread\mthread.inc
-$(OBJDIR)\mthrmgr.obj:                                                              $(INCPATH)\mthread\mthread.h $(INCPATH)\mthread\mthrmgr.h
-$(OBJDIR)\video.obj:                                                                $(INCPATH)\mthread\video.h
-$(OBJDIR)\cdemo.obj $(OBJDIR)\cinput.obj $(OBJDIR)\csync.obj:                       $(INCPATH)\mthread\mthread.h $(INCPATH)\mthread\video.h
-$(OBJDIR)\cppdemo.obj $(OBJDIR)\cppinput.obj $(OBJDIR)\cppsync.obj:                 $(INCPATH)\mthread\mthread.h $(INCPATH)\mthread\video.h
-$(OBJDIR)\cinput.obj $(OBJDIR)\cppinput.obj:                                        $(INCPATH)\mthread\input.h
+$(OBJDIR)\mthread.obj $(OBJDIR)\videohlp.obj $(OBJDIR)\kbd.obj $(OBJDIR)\mouse.obj:      $(INCPATH)\mthread\mthread.inc
+$(OBJDIR)\mthrmgr.obj:                                                                   $(INCPATH)\mthread\mthread.h $(INCPATH)\mthread\mthrmgr.h
+$(OBJDIR)\video.obj:                                                                     $(INCPATH)\mthread\video.h
+$(OBJDIR)\cdemo.obj $(OBJDIR)\cfpu.obj $(OBJDIR)\cinput.obj $(OBJDIR)\csync.obj:         $(INCPATH)\mthread\mthread.h $(INCPATH)\mthread\video.h
+$(OBJDIR)\cppdemo.obj $(OBJDIR)\cppfpu.obj $(OBJDIR)\cppinput.obj $(OBJDIR)\cppsync.obj: $(INCPATH)\mthread\mthread.h $(INCPATH)\mthread\video.h
+$(OBJDIR)\cinput.obj $(OBJDIR)\cppinput.obj:                                             $(INCPATH)\mthread\input.h
 
 # Static libraries
 $(LIBDIR)\mthread.lib: $(OBJDIR)\mthread.obj $(OBJDIR)\mthrmgr.obj
@@ -189,9 +190,11 @@ $(LIBDIR)\input.lib: $(OBJDIR)\kbd.obj $(OBJDIR)\mouse.obj
 
 # Demo executables (linked via {$(OBJDIR)}.obj{$(BINDIR)}.$(EXT) inference rule)
 $(BINDIR)\cdemo.$(EXT):    $(OBJDIR)\cdemo.obj    $(LIBDIR)\mthread.lib $(LIBDIR)\video.lib
+$(BINDIR)\cfpu.$(EXT):     $(OBJDIR)\cfpu.obj     $(LIBDIR)\mthread.lib $(LIBDIR)\video.lib
 $(BINDIR)\cinput.$(EXT):   $(OBJDIR)\cinput.obj   $(LIBDIR)\mthread.lib $(LIBDIR)\video.lib $(LIBDIR)\input.lib
 $(BINDIR)\csync.$(EXT):    $(OBJDIR)\csync.obj    $(LIBDIR)\mthread.lib $(LIBDIR)\video.lib
 $(BINDIR)\cppdemo.$(EXT):  $(OBJDIR)\cppdemo.obj  $(LIBDIR)\mthread.lib $(LIBDIR)\video.lib
+$(BINDIR)\cppfpu.$(EXT):   $(OBJDIR)\cppfpu.obj   $(LIBDIR)\mthread.lib $(LIBDIR)\video.lib
 $(BINDIR)\cppinput.$(EXT): $(OBJDIR)\cppinput.obj $(LIBDIR)\mthread.lib $(LIBDIR)\video.lib $(LIBDIR)\input.lib
 $(BINDIR)\cppsync.$(EXT):  $(OBJDIR)\cppsync.obj  $(LIBDIR)\mthread.lib $(LIBDIR)\video.lib
 
@@ -202,8 +205,9 @@ clean:
 	-if exist $(BINDIR)\*.exe del $(BINDIR)\*.exe
 	-if exist $(BINDIR)\*.com del $(BINDIR)\*.com
 	-if exist $(BINDIR)\*.map del $(BINDIR)\*.map
-	-if exist mttest.log del mttest.log
+	-if exist     mttest.log del     mttest.log
 	-if exist $(OBJDIR)\mttest.log del $(OBJDIR)\mttest.log
+	-if exist $(LIBDIR)\mttest.log del $(LIBDIR)\mttest.log
 	-if exist $(BINDIR)\mttest.log del $(BINDIR)\mttest.log
 	-if exist $(OBJDIR)\nul rmdir $(OBJDIR)
 	-if exist $(LIBDIR)\nul rmdir $(LIBDIR)
