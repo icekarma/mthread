@@ -1,16 +1,14 @@
 /*===========================================================================
- * thread.h - Thread management for mthread library
+ * thread.h - Thread management for MTHREAD
  *===========================================================================*/
 
 #if !defined _THREAD_H_
 #define _THREAD_H_
 
+#include <mthread/_defs.h>
+
 #if defined __cplusplus
 extern "C" {
-#endif
-
-#if !defined MT_API
-#   define MT_API __cdecl
 #endif
 
 /*===========================================================================

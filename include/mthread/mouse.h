@@ -5,7 +5,7 @@
 #if !defined _MOUSE_H_
 #define _MOUSE_H_
 
-#include <mthread/mthread.h>
+#include <mthread/synchron.h>
 
 #if defined __cplusplus
 extern "C" {

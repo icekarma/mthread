@@ -9,6 +9,8 @@
 #error "mthrmgr.h is a C++ header. Please compile as C++."
 #endif // !defined __cplusplus
 
+#include <stddef.h>
+
 #include <mthread/thread.h>
 #include <mthread/atomic.h>
 

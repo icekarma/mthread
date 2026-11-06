@@ -5,8 +5,6 @@
 #if !defined _INPUT_H_
 #define _INPUT_H_
 
-#include <mthread/mthread.h>
-
 #include <mthread/kbd.h>
 #include <mthread/mouse.h>
 

@@ -10,6 +10,7 @@
 #endif // !defined __cplusplus
 
 #include <mthread/mouse.h>
+#include <mthread/mevent.h>
 
 //===========================================================================
 // Class MMouse - C++ interface to callback-driven mouse (INT 33h) module

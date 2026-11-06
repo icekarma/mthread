@@ -5,12 +5,10 @@
 #if !defined _ATOMIC_H_
 #define _ATOMIC_H_
 
+#include <mthread/_defs.h>
+
 #if defined __cplusplus
 extern "C" {
-#endif
-
-#if !defined MT_API
-#   define MT_API __cdecl
 #endif
 
 /*===========================================================================

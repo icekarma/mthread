@@ -5,12 +5,10 @@
 #if !defined _VIDEO_H_
 #define _VIDEO_H_
 
+#include <mthread/_defs.h>
+
 #if defined __cplusplus
 extern "C" {
-#endif
-
-#if !defined MT_API
-#   define MT_API __cdecl
 #endif
 
 /*===========================================================================
