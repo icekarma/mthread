@@ -10,5 +10,6 @@
 #include <mthread/thread.h>
 #include <mthread/synchron.h>
 #include <mthread/atomic.h>
+#include <mthread/msg.h>
 
 #endif /* _MTHREAD_H_ */
