@@ -79,7 +79,7 @@ CPU_FLAGS = $(CPU_FLAGS:186=/G1)
 CC        = cl
 AS        = ml
 CFLAGS    = /c /A$(MCODE) $(CPU_FLAGS) /Gy /Ox /W3 $(MSC_DBG) /I$(INCPATH) /DOFFSET_DISPLAY /nologo
-AFLAGS    = /c /W2 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) $(ASM_FPU_FLAGS) $(MSC_DBG) /I$(INCPATH) /DOFFSET_DISPLAY /nologo
+AFLAGS    = /c /W2 /DMODEL_NAME=$(MODEL) $(ASM_CPU_FLAGS) $(ASM_FPU_FLAGS) $(MSC_DBG) /I$(INCPATH) /DOFFSET_DISPLAY /nologo /Sg /Fl$(OBJDIR)\$(@B).lst
 FO_FLAG   = /Fo$@
 AS_ARGS   = /Fo$@ $<
 LINK_CMD  = $(CC) /A$(MCODE) $(CPU_FLAGS) /nologo
@@ -121,28 +121,44 @@ LIB_END   =
 .SUFFIXES: .obj .asm .cpp .c
 
 {src\mthread}.asm{$(OBJDIR)}.obj:
-	$(AS) $(AFLAGS) $(AS_ARGS)
+	$(AS) @<<
+$(AFLAGS) $(AS_ARGS)
+<<
 
 {src\mthread}.cpp{$(OBJDIR)}.obj:
-	$(CC) $(CFLAGS) $(FO_FLAG) $<
+	$(CC) @<<
+$(CFLAGS) $(FO_FLAG) $<
+<<
 
 {src\video}.asm{$(OBJDIR)}.obj:
-	$(AS) $(AFLAGS) $(AS_ARGS)
+	$(AS) @<<
+$(AFLAGS) $(AS_ARGS)
+<<
 
 {src\video}.c{$(OBJDIR)}.obj:
-	$(CC) $(CFLAGS) $(FO_FLAG) $<
+	$(CC) @<<
+$(CFLAGS) $(FO_FLAG) $<
+<<
 
 {src\input}.asm{$(OBJDIR)}.obj:
-	$(AS) $(AFLAGS) $(AS_ARGS)
+	$(AS) @<<
+$(AFLAGS) $(AS_ARGS)
+<<
 
 {src\demos\c}.c{$(OBJDIR)}.obj:
-	$(CC) $(CFLAGS) $(FO_FLAG) $<
+	$(CC) @<<
+$(CFLAGS) $(FO_FLAG) $<
+<<
 
 {src\demos\cpp}.cpp{$(OBJDIR)}.obj:
-	$(CC) $(CFLAGS) $(FO_FLAG) $<
+	$(CC) @<<
+$(CFLAGS) $(FO_FLAG) $<
+<<
 
 {$(OBJDIR)}.obj{$(BINDIR)}.$(EXT):
-	$(LINK_CMD) $(FE_FLAG) $**
+	$(LINK_CMD) @<<
+$(FE_FLAG) $**
+<<
 
 # --- 5. Build targets & dependencies ---
 LIBS     = $(LIBDIR)\mthread.lib $(LIBDIR)\video.lib $(LIBDIR)\input.lib
@@ -171,7 +187,6 @@ dirs:
 	@if not exist $(BINDIR)\nul mkdir $(BINDIR)
 
 # Object header / include dependencies (compiled via inference rules)
-
 $(OBJDIR)\mthread.obj $(OBJDIR)\videohlp.obj $(OBJDIR)\kbd.obj $(OBJDIR)\mouse.obj:      $(INCPATH)\mthread\mthread.inc
 $(OBJDIR)\mthrmgr.obj:                                                                   $(INCPATH)\mthread\mthread.h $(INCPATH)\mthread\mthrmgr.h
 $(OBJDIR)\video.obj:                                                                     $(INCPATH)\mthread\video.h
@@ -182,15 +197,21 @@ $(OBJDIR)\cinput.obj $(OBJDIR)\cppinput.obj:                                    
 # Static libraries
 $(LIBDIR)\mthread.lib: $(OBJDIR)\mthread.obj $(OBJDIR)\mthrmgr.obj
 	-if exist $@ del $@
-	$(LIB_CMD) $@ +$(**: = +)$(LIB_END)
+	$(LIB_CMD) $@ @<<
++$(**: = +)$(LIB_END)
+<<
 
 $(LIBDIR)\video.lib: $(OBJDIR)\video.obj $(OBJDIR)\videohlp.obj
 	-if exist $@ del $@
-	$(LIB_CMD) $@ +$(**: = +)$(LIB_END)
+	$(LIB_CMD) $@ @<<
++$(**: = +)$(LIB_END)
+<<
 
 $(LIBDIR)\input.lib: $(OBJDIR)\kbd.obj $(OBJDIR)\mouse.obj
 	-if exist $@ del $@
-	$(LIB_CMD) $@ +$(**: = +)$(LIB_END)
+	$(LIB_CMD) $@ @<<
++$(**: = +)$(LIB_END)
+<<
 
 # Demo executables (linked via {$(OBJDIR)}.obj{$(BINDIR)}.$(EXT) inference rule)
 $(BINDIR)\cdemo.$(EXT):    $(OBJDIR)\cdemo.obj    $(LIBDIR)\mthread.lib $(LIBDIR)\video.lib
@@ -204,6 +225,7 @@ $(BINDIR)\cppsync.$(EXT):  $(OBJDIR)\cppsync.obj  $(LIBDIR)\mthread.lib $(LIBDIR
 
 clean:
 	-if exist $(OBJDIR)\*.obj del $(OBJDIR)\*.obj
+	-if exist $(OBJDIR)\*.lst del $(OBJDIR)\*.lst
 	-if exist $(OBJDIR)\*.map del $(OBJDIR)\*.map
 	-if exist $(LIBDIR)\*.lib del $(LIBDIR)\*.lib
 	-if exist $(BINDIR)\*.exe del $(BINDIR)\*.exe
