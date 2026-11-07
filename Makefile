@@ -135,10 +135,10 @@ LIB_END   =
 {src\input}.asm{$(OBJDIR)}.obj:
 	$(AS) $(AFLAGS) $(AS_ARGS)
 
-{src\demos}.c{$(OBJDIR)}.obj:
+{src\demos\c}.c{$(OBJDIR)}.obj:
 	$(CC) $(CFLAGS) $(FO_FLAG) $<
 
-{src\demos}.cpp{$(OBJDIR)}.obj:
+{src\demos\cpp}.cpp{$(OBJDIR)}.obj:
 	$(CC) $(CFLAGS) $(FO_FLAG) $<
 
 {$(OBJDIR)}.obj{$(BINDIR)}.$(EXT):
