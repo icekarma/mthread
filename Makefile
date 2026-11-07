@@ -145,12 +145,16 @@ LIB_END   =
 	$(LINK_CMD) $(FE_FLAG) $**
 
 # --- 5. Build targets & dependencies ---
-LIBS    = $(LIBDIR)\mthread.lib $(LIBDIR)\video.lib $(LIBDIR)\input.lib
-DEMOS   =   $(BINDIR)\cdemo.$(EXT)   $(BINDIR)\cfpu.$(EXT)   $(BINDIR)\cinput.$(EXT)   $(BINDIR)\csync.$(EXT) \
-          $(BINDIR)\cppdemo.$(EXT) $(BINDIR)\cppfpu.$(EXT) $(BINDIR)\cppinput.$(EXT) $(BINDIR)\cppsync.$(EXT)
-TARGETS = $(LIBS) $(DEMOS)
+LIBS     = $(LIBDIR)\mthread.lib $(LIBDIR)\video.lib $(LIBDIR)\input.lib
+CDEMOS   =   $(BINDIR)\cdemo.$(EXT)   $(BINDIR)\cfpu.$(EXT)   $(BINDIR)\cinput.$(EXT)   $(BINDIR)\csync.$(EXT)
+CPPDEMOS = $(BINDIR)\cppdemo.$(EXT) $(BINDIR)\cppfpu.$(EXT) $(BINDIR)\cppinput.$(EXT) $(BINDIR)\cppsync.$(EXT)
+DEMOS    = $(CDEMOS) $(CPPDEMOS)
 
-all: cls dirs $(TARGETS)
+all:      cls dirs libs demos
+libs:     $(LIBS)
+demos:    cdemos cppdemos
+cdemos:   $(CDEMOS)
+cppdemos: $(CPPDEMOS)
 
 cls:
 	@cls
