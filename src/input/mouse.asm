@@ -20,6 +20,9 @@ EXTERNDEF C event_set_isr: PROC
 EXTERNDEF C mt_enter_isr:  PROC
 EXTERNDEF C mt_leave_isr:  PROC
 
+EXTERNDEF C row_offset:    WORD
+EXTERNDEF C col_offset:    WORD
+
 MOUSE_QUEUE_SIZE EQU 16             ; Must be power of 2
 MOUSE_QUEUE_MASK EQU (MOUSE_QUEUE_SIZE - 1)
 MOUSE_EVT_MOVE   EQU 0001h
@@ -85,14 +88,14 @@ mouse_callback PROC FAR
     mov  mouse_live.mev_raw_x, cx
     mov  mouse_live.mev_raw_y, dx
 
-    mov  si, cx
-    SHR_IMM si, 3                   ; col = CX / 8
-    mov  di, dx
-    SHR_IMM di, 3                   ; row = DX / 8
-    mov  ax, si
-    mov  mouse_live.mev_col, al
-    mov  ax, di
-    mov  mouse_live.mev_row, al
+    SHR_IMM cx, 3                   ; col = CX / 8
+    SHR_IMM dx, 3                   ; row = DX / 8
+    IFDEF OFFSET_DISPLAY
+        sub cx, col_offset
+        sub dx, row_offset
+    ENDIF
+    mov  mouse_live.mev_col, cl
+    mov  mouse_live.mev_row, dl
     mov  mouse_live.mev_reserved, 0
 
     mov  ax, mouse_live.mev_flags
@@ -243,6 +246,10 @@ save_notify_ptr:
     mov  mouse_live.mev_raw_y, dx
     SHR_IMM cx, 3
     SHR_IMM dx, 3
+    IFDEF OFFSET_DISPLAY
+        sub cx, col_offset
+        sub dx, row_offset
+    ENDIF
     mov  mouse_live.mev_col, cl
     mov  mouse_live.mev_row, dl
     mov  mouse_live.mev_reserved, 0
