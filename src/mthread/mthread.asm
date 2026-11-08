@@ -113,7 +113,6 @@ old_int25       DD  0                   ; Saved DOS Absolute Disk Read
 old_int26       DD  0                   ; Saved DOS Absolute Disk Write
 old_int27       DD  0                   ; Saved DOS Terminate & Stay Resident
 old_int29       DD  0                   ; Saved DOS Fast Console Output
-old_int2a       DD  0                   ; Saved DOS Network / Critical Section
 old_int2e       DD  0                   ; Saved DOS COMMAND.COM Execute
 old_int2f       DD  0                   ; Saved DOS Multiplex Interrupt
 old_int33       DD  0                   ; Saved Mouse Driver (if non-null)
@@ -1198,33 +1197,6 @@ isr_int27 PROC FAR
 isr_int27 ENDP
 
 ;-----------------------------------------------------------------------------
-; isr_int2a - DOS critical section / network wrapper
-;-----------------------------------------------------------------------------
-isr_int2a PROC FAR
-    cmp  ah, 80h                    ; Begin DOS Critical Section?
-    jne  chk_end_crit
-    inc  cs:[bios_lock]
-    jmp  SHORT chain_int2a
-chk_end_crit:
-    cmp  ah, 81h                    ; End DOS Critical Section?
-    je   do_end_crit
-    cmp  ah, 82h                    ; End All DOS Critical Sections?
-    jne  chain_int2a
-do_end_crit:
-    cmp  cs:[bios_lock], 0
-    je   chain_int2a
-    dec  cs:[bios_lock]
-chain_int2a:
-    inc  cs:[bios_lock]
-    pushf
-    call DWORD PTR cs:[old_int2a]
-    pushf
-    dec  cs:[bios_lock]
-    popf
-    retf 2
-isr_int2a ENDP
-
-;-----------------------------------------------------------------------------
 ; Helper macro to save & hook a vector via DOS INT 21h (AH=35h / AH=25h)
 ;-----------------------------------------------------------------------------
 SAVE_AND_HOOK MACRO vec_num, old_slot, new_isr
@@ -1310,7 +1282,6 @@ do_unhook_now:
     RESTORE_VEC 26h, old_int26
     RESTORE_VEC 27h, old_int27
     RESTORE_VEC 29h, old_int29
-    RESTORE_VEC 2Ah, old_int2a
     RESTORE_VEC 2Eh, old_int2e
     RESTORE_VEC 2Fh, old_int2f
     RESTORE_VEC 33h, old_int33
@@ -1496,7 +1467,6 @@ ENDIF
     SAVE_AND_HOOK 26h, old_int26, isr_int26
     SAVE_AND_HOOK 27h, old_int27, isr_int27
     SAVE_AND_HOOK 29h, old_int29, isr_int29
-    SAVE_AND_HOOK 2Ah, old_int2a, isr_int2a
     SAVE_AND_HOOK 2Eh, old_int2e, isr_int2e
     SAVE_AND_HOOK 2Fh, old_int2f, isr_int2f
 
