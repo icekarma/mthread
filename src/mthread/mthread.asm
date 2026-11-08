@@ -859,9 +859,14 @@ tier_disk_retry:
     je   dos_pop_and_pass           ; Recursive INT 21h from same thread
 
     ; Collision on DiskStack: boost owner''s priority & block current thread
+    push dx                         ; Preserve caller''s DX
+    push si                         ; Preserve caller''s SI
     mov  bl, al
     mov  dl, STATE_WAIT_DISK
     call boost_and_block_on_dos
+    pop  si
+    pop  dx
+    mov  ds, cs:[dgroup_seg]        ; Thread wakes with caller''s DS; reload DGROUP
     jmp  SHORT tier_disk_retry
 
 claim_disk_stack:
@@ -879,9 +884,14 @@ tier_aux_stack:
     cmp  al, current_tid
     je   dos_pop_and_pass
 
+    push dx
+    push si
     mov  bl, al
     mov  dl, STATE_WAIT_AUX
     call boost_and_block_on_dos
+    pop  si
+    pop  dx
+    mov  ds, cs:[dgroup_seg]
     jmp  SHORT tier_aux_retry
 
 claim_aux_stack:
@@ -934,9 +944,14 @@ tier_io_stack:
     jmp  SHORT claim_io_stack
 
 wait_for_io_buf:
+    push dx
+    push si
     mov  bl, al
     mov  dl, STATE_WAIT_IO
     call boost_and_block_on_dos
+    pop  si
+    pop  dx
+    mov  ds, cs:[dgroup_seg]
     jmp  SHORT tier_io_retry
 
 claim_io_stack:
