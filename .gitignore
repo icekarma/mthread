@@ -1,7 +1,6 @@
-*.COD
-*.EXE
-*.LIB
-*.MAP
-*.OBJ
+obj/
+lib/
+bin/
 .vs/
+.*.swp
 MTTEST.LOG
