@@ -963,6 +963,7 @@ mark_in_dos_and_call:
     push ax
     push bx
     push cx
+    push dx
 
     mov  ds, cs:[dgroup_seg]
     cli
@@ -1036,6 +1037,7 @@ finish_int21_exit:
     and  WORD PTR ss:[bx+14], NOT 0FD5h
     or   ss:[bx+14], ax             ; Merge into caller''s IRET FLAGS word
 
+    pop  dx
     pop  cx
     pop  bx
     pop  ax
