@@ -911,6 +911,10 @@ boost_and_block_on_dos ENDP
 restore_prio_and_wake PROC NEAR
     mov  bx, current_tcb
     mov  al, [bx].TCB.tcb_base_prio
+    cmp  al, [bx].TCB.tcb_mtx_prio
+    jae  rest_dos_prio
+    mov  al, [bx].TCB.tcb_mtx_prio
+rest_dos_prio:
     mov  [bx].TCB.tcb_prio, al
 
     mov  bx, OFFSET tcb_table
@@ -952,12 +956,12 @@ isr_int24 PROC FAR
     push ds
     push ax
     mov  ds, cs:[dgroup_seg]
+    mov  BYTE PTR crit_err_code+1, ah   ; High byte = AH (DOS critical error flags)
     mov  ax, di
-    mov  BYTE PTR crit_err_code, al
-    mov  BYTE PTR crit_err_code+1, ah
+    mov  BYTE PTR crit_err_code, al     ; Low byte  = DI low byte (error code)
     pop  ax
     pop  ds
-    mov  al, 03h                    ; AL = 03h: Fail system call
+    mov  al, 03h                        ; AL = 03h: Fail system call
     iret
 isr_int24 ENDP
 
@@ -1527,7 +1531,7 @@ found_slot:
         or   cx, dx
         jnz  save_sda_far
         mov  al, MT_ERR_NO_MEMORY
-        jmp  create_err_free_sda
+        jmp  create_exit
     save_sda_far:
         mov  [si].TCB.sda_buf_off, ax
         mov  [si].TCB.sda_buf_seg, dx
@@ -1535,7 +1539,7 @@ found_slot:
         or   ax, ax
         jnz  save_sda_near
         mov  al, MT_ERR_NO_MEMORY
-        jmp  create_err_free_sda
+        jmp  create_exit
     save_sda_near:
         mov  [si].TCB.sda_buf_off, ax
         mov  [si].TCB.sda_buf_seg, ds
@@ -1592,8 +1596,7 @@ resolve_stack_ptr:
         mov  cx, ax
         or   cx, dx
         jnz  save_far_alloc
-        mov  al, MT_ERR_NO_MEMORY
-        jmp  create_exit
+        jmp  create_err_free_sda
     save_far_alloc:
         mov  WORD PTR stack_ptr, ax
         mov  WORD PTR stack_ptr+2, dx
@@ -1612,8 +1615,7 @@ resolve_stack_ptr:
         add  sp, 2
         or   ax, ax
         jnz  save_near_alloc
-        mov  al, MT_ERR_NO_MEMORY
-        jmp  create_exit
+        jmp  create_err_free_sda
     save_near_alloc:
         mov  stack_ptr, ax
         mov  [si].TCB.stk_alloc_off, ax
@@ -1700,6 +1702,7 @@ ENDIF
     and  al, 07h
     mov  [si].TCB.tcb_prio, al
     mov  [si].TCB.tcb_base_prio, al
+    mov  [si].TCB.tcb_mtx_prio, 0
     mov  [si].TCB.sleep_ticks, 0
     mov  [si].TCB.tcb_state, STATE_READY
 
@@ -2059,6 +2062,10 @@ thread_set_priority PROC PUBLIC, tid: BYTE, new_prio: BYTE
     and  al, 07h
     cli
     mov  [bx].TCB.tcb_base_prio, al
+    cmp  al, [bx].TCB.tcb_mtx_prio
+    jae  set_eff_prio
+    mov  al, [bx].TCB.tcb_mtx_prio
+set_eff_prio:
     mov  [bx].TCB.tcb_prio, al
     sti
     xor  ax, ax
@@ -2419,6 +2426,10 @@ mutex_lock PROC PUBLIC USES si di ds, mtx: DATA_PTR
     add  bx, OFFSET tcb_table       ; BX = owner''s TCB
     mov  si, current_tcb            ; SI = current thread''s TCB
     mov  ah, [si].TCB.tcb_prio
+    cmp  ah, [bx].TCB.tcb_mtx_prio
+    jle  mtx_chk_eff_prio
+    mov  [bx].TCB.tcb_mtx_prio, ah  ; Latch mutex-inherited priority
+mtx_chk_eff_prio:
     cmp  ah, [bx].TCB.tcb_prio
     jle  mtx_add_waiter
     mov  [bx].TCB.tcb_prio, ah      ; Boost owner''s effective priority
@@ -2495,6 +2506,7 @@ mutex_unlock PROC PUBLIC USES si di ds, mtx: DATA_PTR
 
     ; Restore current thread''s base priority (undo any priority inheritance)
     mov  bx, current_tcb
+    mov  [bx].TCB.tcb_mtx_prio, 0
     mov  al, [bx].TCB.tcb_base_prio
     mov  [bx].TCB.tcb_prio, al
 
@@ -2634,8 +2646,9 @@ cond_wait PROC PUBLIC USES si di ds, cv: DATA_PTR, mtx: DATA_PTR
     mov  saved_count, al
     mov  es:[di].MT_MUTEX.mtx_count, 1
 
-    ; Restore current thread''s base priority & wake next mutex waiter if any
+    ; Restore current thread''s base priority (undo any priority inheritance) & wake next mutex waiter if any
     mov  bx, current_tcb
+    mov  [bx].TCB.tcb_mtx_prio, 0
     mov  al, [bx].TCB.tcb_base_prio
     mov  [bx].TCB.tcb_prio, al
 

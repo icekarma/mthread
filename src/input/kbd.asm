@@ -30,6 +30,7 @@ EXTERNDEF C threading_is_break_requested: PROC
 kbd_ev_off      DW  0
 kbd_ev_seg      DW  0
 kbd_active      DB  0
+kbd_break_seen  DB  0
 
 ;=============================================================================
 ; CODE SEGMENT
@@ -63,17 +64,18 @@ isr_int09 PROC FAR
 
     mov  ds, cs:[kbd_dgroup_seg]
 
-    ; Did this keystroke trigger Ctrl+Break (INT 1Bh)?
-    call threading_is_break_requested
-    or   ax, ax
-    jnz  signal_kbd_event
-
-    ; Check BIOS keyboard buffer head (0040:001Ah) vs. tail (0040:001Ch)
+    ; Check if BIOS keyboard buffer has at least one keystroke (head != tail)
     xor  ax, ax
     mov  es, ax
     mov  ax, es:[041Ah]
     cmp  ax, es:[041Ch]
-    je   isr_int09_done             ; Buffer empty (e.g., key release, modifier)
+    jne  signal_kbd_event
+
+    ; Buffer is empty; check if break_flag just transitioned 0 -> 1
+    call threading_is_break_requested
+    cmp  al, kbd_break_seen
+    mov  kbd_break_seen, al
+    jbe  isr_int09_done             ; Ignore if 0 or already notified (1 == 1)
 
 signal_kbd_event:
     mov  ax, kbd_ev_off
@@ -129,6 +131,7 @@ kbd_init PROC PUBLIC USES ds, notify_ev: DATA_PTR
     ENDIF
     mov  kbd_ev_off, ax
     mov  kbd_ev_seg, dx
+    mov  kbd_break_seen, 0
 
     ; Save original INT 09h vector
     mov  ax, 3509h

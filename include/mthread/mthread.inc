@@ -171,18 +171,20 @@ TCB STRUC
     tcb_state       DB  ?           ; +1Ch: STATE_*
     tcb_prio        DB  ?           ; +1Dh: Effective priority (0..7)
     tcb_base_prio   DB  ?           ; +1Eh: Base priority (restored after boost)
-    tcb_flags       DB  ?           ; +1Fh: TCB_FLG_* bitmask
-    sleep_ticks     DW  ?           ; +20h: Tick countdown for thread_sleep()
-    stk_limit       DW  ?           ; +22h: Written to DGROUP:STKHQQ on switch
-    stk_alloc_off   DW  ?           ; +24h: Heap offset for free()
-    stk_alloc_seg   DW  ?           ; +26h: Heap segment (or dos_stack_id in low byte)
+    tcb_mtx_prio    DB  ?           ; +1Fh: Highest priority inherited from a mutex
+    tcb_flags       DB  ?           ; +20h: TCB_FLG_* bitmask
+    reserved1       DB  ?           ; +21h: Padding for alignment
+    sleep_ticks     DW  ?           ; +22h: Tick countdown for thread_sleep()
+    stk_limit       DW  ?           ; +24h: Written to DGROUP:STKHQQ on switch
+    stk_alloc_off   DW  ?           ; +26h: Heap offset for free()
+    stk_alloc_seg   DW  ?           ; +28h: Heap segment (or dos_stack_id in low byte)
 
     ; Address of dynamic SDA swap buffer (4 bytes)
-    sda_buf_off     DW 0            ; +28h: Offset of thread''s dynamic SDA swap buffer
-    sda_buf_seg     DW 0            ; +2Ah: Segment of thread''s dynamic SDA swap buffer
+    sda_buf_off     DW  ?           ; +2Ah: Offset of thread''s dynamic SDA swap buffer
+    sda_buf_seg     DW  ?           ; +2Ch: Segment of thread''s dynamic SDA swap buffer
 
-    ; Padding to maintain exact 64-byte power-of-2 TCB size for SHL_IMM bx, 6 (20 bytes)
-    tcb_reserved    DB 20 DUP (0)   ; +2Ch..+3Fh
+    ; Padding to maintain power-of-2 TCB size (18 bytes)
+    reserved2       DB 18 DUP (?)   ; +2Eh..+3Fh
 TCB ENDS
 .ERRNZ (SIZEOF TCB - 64)
 
