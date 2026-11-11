@@ -148,6 +148,15 @@ skip:
     cmp  cs:[bios_lock], 0
     jne  timer_locked_tick
 
+    ; Defer preemption if another hardware IRQ is currently in service on the 8259 PIC(s)
+    push ax
+    mov  al, 0Bh                    ; OCW3: read In-Service Register (ISR)
+    out  20h, al
+    in   al, 20h                    ; Master PIC ISR: only bit 0 (IRQ0) should be set
+    cmp  al, 01h
+    pop  ax
+    jne  timer_locked_tick
+
 IFDEF USE_FPU
     ; If software x87 emulator is active and interrupted thread is mid-opcode
     ; inside INT 34h..3Eh, defer preemption via timer_locked_tick.
@@ -950,7 +959,7 @@ force_ctrl_c_abort:
 isr_int23 ENDP
 
 ;-----------------------------------------------------------------------------
-; isr_int24 - DOS critical error handler (suppresses prompt, returns Fail=03h)
+; isr_int24 - DOS critical error handler (suppresses prompt, returns appropriate value)
 ;-----------------------------------------------------------------------------
 isr_int24 PROC FAR
     push ds
@@ -960,6 +969,24 @@ isr_int24 PROC FAR
     mov  ax, di
     mov  BYTE PTR crit_err_code, al     ; Low byte  = DI low byte (error code)
     pop  ax
+
+    test ah, 08h                        ; Is Fail (AL=03h) allowed by DOS?
+    jnz  int24_ret_fail
+    test ah, 20h                        ; Is Ignore (AL=00h) allowed?
+    jnz  int24_ret_ignore
+
+    ; Neither Fail nor Ignore allowed: DOS will abort, so unhook vectors now!
+    call unhook_hardware
+    pop  ds
+    mov  al, 02h                        ; AL = 02h: Abort program cleanly
+    iret
+
+int24_ret_ignore:
+    pop  ds
+    xor  al, al                         ; AL = 00h: Ignore error
+    iret
+
+int24_ret_fail:
     pop  ds
     mov  al, 03h                        ; AL = 03h: Fail system call
     iret
@@ -1374,6 +1401,17 @@ threading_abort ENDP
 ;-----------------------------------------------------------------------------
 threading_shutdown PROC PUBLIC USES si di ds
     LOAD_DS_DGROUP
+
+    ; Ensure main thread''s (TID 0) SDA is live in DOS before unhooking
+    pushf
+    cli
+    mov  current_tid, 0
+    cmp  sda_owner_tid, 0
+    je   skip_shutdown_sda_restore
+    call swap_full_sda
+skip_shutdown_sda_restore:
+    popf
+
     call unhook_hardware
 
     ; Mark thread 0 (and any unjoined threads) as STATE_ZOMBIE so
@@ -2633,7 +2671,16 @@ cond_wait PROC PUBLIC USES si di ds, cv: DATA_PTR, mtx: DATA_PTR
     pushf
     cli
 
-    ; 1. Add current thread to Condition Variable''s cv_wait_mask
+    ; Verify calling thread actually owns the mutex
+    LOAD_DATA_PTR di, mtx
+    mov  bl, current_tid
+    cmp  es:[di].MT_MUTEX.mtx_owner, bl
+    je   cv_owner_ok
+    popf
+    ret
+
+cv_owner_ok:
+    ; 1. Add current thread to condition variable''s cv_wait_mask
     LOAD_DATA_PTR di, cv
     mov  bl, current_tid
     xor  bh, bh
