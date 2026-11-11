@@ -134,14 +134,7 @@ STATE_WAIT_SYNC     EQU 6           ; Blocked on Event, Mutex, Sem, or CondVar
 ; Thread flags (tcb_flags)
 TCB_FLG_OWN_STACK   EQU 01h         ; Stack allocated via malloc
 TCB_FLG_IN_DOS      EQU 02h         ; Thread is currently inside INT 21h
-TCB_FLG_SWAPPED_IO  EQU 04h         ; Thread's IOStack is saved in io_swap_buf
-TCB_FLG_FPU         EQU 08h         ; Thread saves/restores 94-byte FPU context
-
-; DOS internal stack IDs (dos_stack_id)
-DOS_STK_NONE        EQU 0
-DOS_STK_IO          EQU 1           ; AH = 01h..0Ch
-DOS_STK_DISK        EQU 2           ; AH >= 0Dh (except 59h)
-DOS_STK_AUX         EQU 3           ; AH = 59h or ErrorMode != 0
+TCB_FLG_FPU         EQU 04h         ; Thread saves/restores 94-byte FPU context
 
 ; Error codes (matching mthread.h)
 MT_ERR_NONE         EQU 00h

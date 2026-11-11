@@ -94,7 +94,6 @@ dgroup_seg      DW  0                   ; Initialized to SEG DGROUP in threading
 scratch_ds      DW  0                   ; Temp storage during context save
 scratch_bx      DW  0                   ; Temp storage during context save
 bios_lock       DB  0                   ; >0 when executing inside wrapped BIOS int
-in_scheduler    DB  0                   ; Reentrancy guard for scheduler
 
 old_int08       DD  0                   ; Saved BIOS Timer (IRQ0)
 old_int10       DD  0                   ; Saved BIOS Video
@@ -2262,7 +2261,6 @@ mt_leave_isr ENDP
 ; 1. WIN32 EVENT OBJECT API (event_init, event_set, event_reset, event_pulse, event_wait)
 ;=============================================================================
 
-thread_event_init LABEL NEAR
 event_init PROC PUBLIC USES di, ev: DATA_PTR, manual_reset: BYTE, initial_state: BYTE
     LOAD_DATA_PTR di, ev
     xor  al, al
