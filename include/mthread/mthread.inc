@@ -109,17 +109,13 @@ ENDM
 MAX_THREADS         EQU 8
 NO_THREAD           EQU 0FFh
 DEFAULT_STACK_SIZE  EQU 1024
+MINIMUM_STACK_SIZE  EQU 128
 IFDEF USE_FPU
 ISR_STACK_SIZE      EQU 768
 ELSE
 ISR_STACK_SIZE      EQU 512
 ENDIF
 STACK_GUARD_MARGIN  EQU 64          ; Margin above allocation base for STKHQQ
-
-SDA_HEADER_SIZE     EQU 24          ; DX=0018h bytes at SDA+00h..17h
-SDA_CON_VARS_SIZE   EQU 16          ; Console state vars at SDA+18h..27h
-IOSTACK_SIZE        EQU 384         ; 180h bytes for DOS IOStack
-IOSWAP_BUF_SIZE     EQU (SDA_CON_VARS_SIZE + IOSTACK_SIZE) ; 400 bytes total
 
 FPU_STATE_SIZE      EQU 94          ; 94-byte x87 FSAVE/FRSTOR context frame
 FPU_MODE_NONE       EQU 0           ; No x87 hardware or software emulator
@@ -132,13 +128,11 @@ STATE_READY         EQU 1
 STATE_RUNNING       EQU 2
 STATE_SLEEPING      EQU 3
 STATE_WAIT_DISK     EQU 4           ; Waiting for DiskStack owner to exit DOS
-STATE_WAIT_AUX      EQU 5           ; Waiting for AuxStack owner to exit DOS
-STATE_ZOMBIE        EQU 6           ; Exited; awaiting lazy stack free()
-STATE_WAIT_IO       EQU 7           ; Three-way IOStack contention
-STATE_WAIT_SYNC     EQU 8           ; Blocked on Event, Mutex, Sem, or CondVar
+STATE_ZOMBIE        EQU 5           ; Exited; awaiting lazy stack free
+STATE_WAIT_SYNC     EQU 6           ; Blocked on Event, Mutex, Sem, or CondVar
 
 ; Thread flags (tcb_flags)
-TCB_FLG_OWN_STACK   EQU 01h         ; Stack allocated via malloc()
+TCB_FLG_OWN_STACK   EQU 01h         ; Stack allocated via malloc
 TCB_FLG_IN_DOS      EQU 02h         ; Thread is currently inside INT 21h
 TCB_FLG_SWAPPED_IO  EQU 04h         ; Thread's IOStack is saved in io_swap_buf
 TCB_FLG_FPU         EQU 08h         ; Thread saves/restores 94-byte FPU context
@@ -183,9 +177,14 @@ TCB STRUC
     stk_alloc_off   DW  ?           ; +24h: Heap offset for free()
     stk_alloc_seg   DW  ?           ; +26h: Heap segment (or dos_stack_id in low byte)
 
-    ; Per-thread 24-byte DOS SDA header snapshot (24 bytes)
-    sda_hdr         DB  SDA_HEADER_SIZE DUP (?) ; +28h..3Fh
+    ; Address of dynamic SDA swap buffer (4 bytes)
+    sda_buf_off     DW 0            ; +28h: Offset of thread''s dynamic SDA swap buffer
+    sda_buf_seg     DW 0            ; +2Ah: Segment of thread''s dynamic SDA swap buffer
+
+    ; Padding to maintain exact 64-byte power-of-2 TCB size for SHL_IMM bx, 6 (20 bytes)
+    tcb_reserved    DB 20 DUP (0)   ; +2Ch..+3Fh
 TCB ENDS
+.ERRNZ (SIZEOF TCB - 64)
 
 ; --- Synchronization object structures (matching mthread.h) ---
 MT_EVENT STRUC
@@ -194,6 +193,7 @@ MT_EVENT STRUC
     ev_wait_mask    DB  ?           ; +02h: Bitmask of waiting TIDs
     ev_reserved     DB  ?           ; +03h
 MT_EVENT ENDS
+.ERRNZ (SIZEOF MT_EVENT - 4)
 
 MT_MUTEX STRUC
     mtx_owner       DB  ?           ; +00h: TID (0..7) or NO_THREAD (0FFh)
@@ -201,14 +201,17 @@ MT_MUTEX STRUC
     mtx_wait_mask   DB  ?           ; +02h: Bitmask of waiting TIDs
     mtx_reserved    DB  ?           ; +03h
 MT_MUTEX ENDS
+.ERRNZ (SIZEOF MT_MUTEX - 4)
 
 MT_SEM STRUC
     sem_count       DW  ?           ; +00h: 16-bit unsigned resource count
     sem_wait_mask   DB  ?           ; +02h: Bitmask of waiting TIDs
     sem_reserved    DB  ?           ; +03h
 MT_SEM ENDS
+.ERRNZ (SIZEOF MT_SEM - 4)
 
 MT_COND STRUC
     cv_wait_mask    DB  ?           ; +00h: Bitmask of waiting TIDs
     cv_reserved     DB  ?           ; +01h
 MT_COND ENDS
+.ERRNZ (SIZEOF MT_COND - 2)

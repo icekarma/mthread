@@ -20,11 +20,14 @@ ENDIF
 
 INCLUDE mthread/mthread.inc
 
-; External MSC 7.00 / CRT symbols
-EXTERNDEF C STKHQQ: WORD            ; MSC 7.00 stack-check lower bound in DGROUP
+; External C runtime library symbols
 EXTERNDEF C malloc: PROC
 EXTERNDEF C free:   PROC
 EXTERNDEF C atexit: PROC
+
+; External MSC 7.00 stack-check symbol (DGROUP:STKHQQ)
+; TODO Borland''s and OpenWatcom''s equivalent stack-check symbols
+EXTERNDEF C STKHQQ: WORD            ; MSC 7.00 stack-check lower bound in DGROUP
 
 ;=============================================================================
 ; DATA SEGMENT (DGROUP)
@@ -32,9 +35,11 @@ EXTERNDEF C atexit: PROC
 
 .DATA
 
+; Table of thread control blocks
 ALIGN 2
 tcb_table       TCB MAX_THREADS DUP (<>)
 
+; Scheduler state variables
 current_tcb     DW  OFFSET tcb_table    ; Cached pointer to TCB[current_tid]
 current_tid     DB  0                   ; 0..7, or NO_THREAD (0FFh) when idle
 active_mask     DB  01h                 ; Bitmask of in-use TCB slots
@@ -56,15 +61,9 @@ pit_sub_count   DB  1                   ; Countdown to BIOS INT 08h chain
 ; DOS SDA & stack ownership tracking
 sda_off         DW  0                   ; Offset of DOS SDA (from AX=5D06h)
 sda_seg         DW  0                   ; Segment of DOS SDA
-iostack_off     DW  0                   ; Offset of 384-byte IOStack inside SDA
-io_stack_owner  DB  NO_THREAD           ; Thread currently inside AH=01h..0Ch
+sda_size        DW  0                   ; Dynamic size of swap-in-DOS area (from AX=5D06h)
+sda_owner_tid   DB  NO_THREAD           ; Thread whose state currently lives in DOS
 disk_stack_owner DB NO_THREAD           ; Thread currently inside AH>=0Dh
-aux_stack_owner DB  NO_THREAD           ; Thread currently inside AH=59h/Err
-io_swap_owner   DB  NO_THREAD           ; Thread whose IOStack is in io_swap_buf
-
-; 400-byte buffer for IOStack collision swapping (16B con vars + 384B IOStack)
-ALIGN 2
-io_swap_buf     DB  IOSWAP_BUF_SIZE DUP (0)
 
 ; Dedicated 512-byte scheduler & ISR stack (keeps user thread stacks tiny)
 ALIGN 2
@@ -96,7 +95,6 @@ scratch_ds      DW  0                   ; Temp storage during context save
 scratch_bx      DW  0                   ; Temp storage during context save
 bios_lock       DB  0                   ; >0 when executing inside wrapped BIOS int
 in_scheduler    DB  0                   ; Reentrancy guard for scheduler
-calib_iostack   DB  0                   ; 1 during threading_init IOStack probe
 
 old_int08       DD  0                   ; Saved BIOS Timer (IRQ0)
 old_int10       DD  0                   ; Saved BIOS Video
@@ -349,14 +347,6 @@ sched_advance:
     cmp  dl, NO_THREAD
     je   enter_idle_hlt
 
-    ; Check if we are switching between different threads that need SDA header swap
-    mov  bl, current_tid
-    cmp  bl, dl
-    je   activate_winner            ; Same thread selected -> no SDA swap needed
-
-    ; Perform 24-byte SDA header micro-swap if leaving/entering an IN_DOS thread
-    call swap_sda_headers
-
 activate_winner:
 IFDEF USE_FPU
     call swap_fpu_context
@@ -364,6 +354,13 @@ ENDIF
     mov  current_tid, dl
     mov  current_tcb, si
     mov  bx, si
+
+    ; If incoming thread was preempted inside INT 21h, ensure its SDA is live
+    test [bx].TCB.tcb_flags, TCB_FLG_IN_DOS
+    jz   resume_current_thread
+    cmp  sda_owner_tid, dl
+    je   resume_current_thread
+    call swap_full_sda
 
 resume_current_thread:
     mov  bx, current_tcb
@@ -397,9 +394,6 @@ resume_current_thread:
 ; Built-in HLT idle loop (runs on isr_stack when no thread is STATE_READY)
 ;-----------------------------------------------------------------------------
 enter_idle_hlt:
-    ; If outgoing thread was in DOS, snapshot its 24-byte SDA header first
-    mov  dl, NO_THREAD
-    call swap_sda_headers
     mov  current_tid, NO_THREAD
 idle_hlt_spin:
     sti
@@ -408,127 +402,62 @@ idle_hlt_spin:
     jmp  schedule_next_thread
 
 ;-----------------------------------------------------------------------------
-; swap_sda_headers - 24-byte SDA header micro-swap & 400-byte IOStack exchange
-; Entry: DS = DGROUP, BL = outgoing TID (or NO_THREAD), DL = incoming TID
-;        SI = incoming TCB pointer (preserved)
+; swap_full_sda - Lazily exchanges live DOS SDA with current thread''s SDA buffer
+; Expects: DS = DGROUP, current_tid != sda_owner_tid. Preserves all registers.
 ;-----------------------------------------------------------------------------
-swap_sda_headers PROC NEAR
-    push si
-    push di
-    push es
+swap_full_sda PROC NEAR USES ax bx cx dx si di es ds
+    ; 1. Save live SDA state into outgoing owner''s buffer
+    mov  al, sda_owner_tid
+    cmp  al, NO_THREAD
+    je   load_incoming_sda
 
-    ; 1. Save outgoing thread''s 24-byte SDA header if it is inside INT 21h
-    cmp  bl, NO_THREAD
-    je   check_incoming_sda
-
-    xor  bh, bh
+    xor  ah, ah
+    mov  bx, ax
     SHL_IMM bx, 6
     add  bx, OFFSET tcb_table
-    test [bx].TCB.tcb_flags, TCB_FLG_IN_DOS
-    jz   check_incoming_sda
 
-    ; Copy 24 bytes from live SDA (sda_seg:sda_off) -> outgoing TCB.sda_hdr
-    push ds
-    pop  es
-    lea  di, [bx].TCB.sda_hdr
-    mov  cx, (SDA_HEADER_SIZE / 2)
-    push ds
+    mov  ax, sda_seg
     mov  si, sda_off
-    mov  ds, sda_seg
+    mov  es, [bx].TCB.sda_buf_seg
+    mov  di, [bx].TCB.sda_buf_off
+    mov  cx, sda_size
+    shr  cx, 1                      ; Convert to words (carry flag set if odd)
+    push ds
+    mov  ds, ax                     ; DS:SI -> live DOS SDA
     cld
     rep  movsw
+    jnc  no_odd_byte1
+    movsb                           ; Catch trailing odd byte if present
+no_odd_byte1:
     pop  ds
 
-check_incoming_sda:
-    ; 2. Restore incoming thread''s 24-byte SDA header if it is inside INT 21h
-    cmp  dl, NO_THREAD
-    je   swap_sda_done
+load_incoming_sda:
+    ; 2. Restore incoming thread''s state from its buffer into live SDA
+    mov  al, current_tid
+    mov  sda_owner_tid, al
 
-    mov  bl, dl
-    xor  bh, bh
+    xor  ah, ah
+    mov  bx, ax
     SHL_IMM bx, 6
     add  bx, OFFSET tcb_table
-    test [bx].TCB.tcb_flags, TCB_FLG_IN_DOS
-    jz   swap_sda_done
 
-    ; Copy 24 bytes from incoming TCB.sda_hdr -> live SDA (sda_seg:sda_off)
-    mov  es, sda_seg
+    mov  ax, sda_seg
     mov  di, sda_off
-    lea  si, [bx].TCB.sda_hdr
-    mov  cx, (SDA_HEADER_SIZE / 2)
+    mov  es, ax                     ; ES:DI -> live DOS SDA
+    mov  si, [bx].TCB.sda_buf_off
+    mov  ax, [bx].TCB.sda_buf_seg
+    mov  cx, sda_size
+    shr  cx, 1
+    push ds
+    mov  ds, ax                     ; DS:SI -> incoming thread''s buffer
     cld
     rep  movsw
-
-    ; 3. Did incoming thread have its 400-byte IOStack swapped out?
-    test [bx].TCB.tcb_flags, TCB_FLG_SWAPPED_IO
-    jz   swap_sda_done
-
-    ; Exchange io_swap_buf (400B) with live SDA console vars + IOStack
-    call exchange_iostack_slice
-
-    ; Update ownership flags between previous live IOStack owner and incoming
-    and  [bx].TCB.tcb_flags, NOT TCB_FLG_SWAPPED_IO
-    mov  al, io_stack_owner
-    mov  io_swap_owner, al
-    mov  io_stack_owner, dl
-
-    cmp  al, NO_THREAD
-    je   swap_sda_done
-    mov  bl, al
-    xor  bh, bh
-    SHL_IMM bx, 6
-    add  bx, OFFSET tcb_table
-    or   [bx].TCB.tcb_flags, TCB_FLG_SWAPPED_IO
-
-swap_sda_done:
-    pop  es
-    pop  di
-    pop  si
+    jnc  no_odd_byte2
+    movsb
+no_odd_byte2:
+    pop  ds
     ret
-swap_sda_headers ENDP
-
-;-----------------------------------------------------------------------------
-; exchange_iostack_slice - In-place 400B XCHG between io_swap_buf & live SDA
-; Expects: DS = DGROUP, ES = sda_seg
-;-----------------------------------------------------------------------------
-exchange_iostack_slice PROC NEAR
-    push ax
-    push cx
-    push si
-    push di
-
-    mov  es, sda_seg
-    mov  si, OFFSET io_swap_buf
-
-    ; Part A: 16 bytes of console state variables at SDA + 18h
-    mov  di, sda_off
-    add  di, SDA_HEADER_SIZE
-    mov  cx, (SDA_CON_VARS_SIZE / 2)
-xchg_con_loop:
-    mov  ax, es:[di]
-    xchg ax, [si]
-    mov  es:[di], ax
-    add  si, 2
-    add  di, 2
-    loop xchg_con_loop
-
-    ; Part B: 384 bytes of IOStack at SDA + iostack_off
-    mov  di, iostack_off
-    mov  cx, (IOSTACK_SIZE / 2)
-xchg_iostk_loop:
-    mov  ax, es:[di]
-    xchg ax, [si]
-    mov  es:[di], ax
-    add  si, 2
-    add  di, 2
-    loop xchg_iostk_loop
-
-    pop  di
-    pop  si
-    pop  cx
-    pop  ax
-    ret
-exchange_iostack_slice ENDP
+swap_full_sda ENDP
 
 IFDEF USE_FPU
 ;-----------------------------------------------------------------------------
@@ -749,21 +678,6 @@ DEFINE_BIOS_WRAPPER isr_int67, old_int67
 ; INT 16h wrapper also performs one-time IOStack offset calibration at init
 ;-----------------------------------------------------------------------------
 isr_int16 PROC FAR
-    cmp  cs:[calib_iostack], 0
-    je   normal_int16
-
-    ; Record exact IOStack base offset inside SDA during AH=0Bh calibration call
-    push ds
-    push ax
-    mov  ds, cs:[dgroup_seg]
-    mov  ax, sp
-    sub  ax, (IOSTACK_SIZE - 32)    ; Account for DOS CON entry stack frame
-    mov  iostack_off, ax
-    mov  cs:[calib_iostack], 0
-    pop  ax
-    pop  ds
-
-normal_int16:
     inc  cs:[bios_lock]
     pushf
     call DWORD PTR cs:[old_int16]
@@ -837,127 +751,43 @@ isr_int21 PROC FAR
     cmp  current_tid, NO_THREAD
     je   dos_pop_and_pass
 
-    ; 2. Determine which internal DOS stack this call will use
-    ;    Check ErrorMode byte at SDA+00h first: if non-zero, DOS uses AuxStack
-    mov  es, sda_seg
-    mov  bx, sda_off
-    cmp  BYTE PTR es:[bx], 0
-    jne  tier_aux_stack
-    cmp  ah, 59h
-    je   tier_aux_stack
-    cmp  ah, 0Ch
-    jbe  tier_io_stack
-
-    ; --- TIER 2: DiskStack (AH >= 0Dh except 59h) ---
-tier_disk_retry:
+    ; 2. Serialize disk calls FIRST (so blocking threads don't evict the owner's SDA)
     cli
+    cmp  ah, 0Ch
+    jbe  mark_in_dos_and_call
+    cmp  ah, 59h                    ; 59h (Get Extended Error) uses SDA, safe without lock
+    je   mark_in_dos_and_call
+
+tier_disk_retry:
     mov  al, disk_stack_owner
     cmp  al, NO_THREAD
     je   claim_disk_stack
     cmp  al, current_tid
     je   dos_pop_and_pass           ; Recursive INT 21h from same thread
 
-    ; Collision on DiskStack: boost owner''s priority & block current thread
-    push dx                         ; Preserve caller''s DX
-    push si                         ; Preserve caller''s SI
+    push dx
+    push si
     mov  bl, al
     mov  dl, STATE_WAIT_DISK
     call boost_and_block_on_dos
     pop  si
     pop  dx
-    mov  ds, cs:[dgroup_seg]        ; Thread wakes with caller''s DS; reload DGROUP
+    mov  ds, cs:[dgroup_seg]
+    cli
     jmp  SHORT tier_disk_retry
 
 claim_disk_stack:
     mov  al, current_tid
     mov  disk_stack_owner, al
-    jmp  SHORT mark_in_dos_and_call
-
-    ; --- TIER 3: AuxStack (AH = 59h or ErrorMode != 0) ---
-tier_aux_retry:
-tier_aux_stack:
-    cli
-    mov  al, aux_stack_owner
-    cmp  al, NO_THREAD
-    je   claim_aux_stack
-    cmp  al, current_tid
-    je   dos_pop_and_pass
-
-    push dx
-    push si
-    mov  bl, al
-    mov  dl, STATE_WAIT_AUX
-    call boost_and_block_on_dos
-    pop  si
-    pop  dx
-    mov  ds, cs:[dgroup_seg]
-    jmp  SHORT tier_aux_retry
-
-claim_aux_stack:
-    mov  al, current_tid
-    mov  aux_stack_owner, al
-    jmp  SHORT mark_in_dos_and_call
-
-    ; --- TIER 1: IOStack (AH = 01h..0Ch) ---
-tier_io_retry:
-tier_io_stack:
-    cli
-    mov  al, io_stack_owner
-    cmp  al, NO_THREAD
-    je   claim_io_stack
-    cmp  al, current_tid
-    je   dos_pop_and_pass
-
-    ; Another thread owns IOStack! Is io_swap_buf free for a 400B slice swap?
-    cmp  io_swap_owner, NO_THREAD
-    jne  wait_for_io_buf
-
-    ; Snapshot owner''s 24-byte SDA header + 400-byte IOStack slice into buffer
-    mov  bl, al
-    xor  bh, bh
-    SHL_IMM bx, 6
-    add  bx, OFFSET tcb_table
-    or   [bx].TCB.tcb_flags, TCB_FLG_SWAPPED_IO
-    mov  io_swap_owner, al
-
-    ; Copy live 24-byte header into displaced owner''s TCB.sda_hdr
-    push si
-    push di
-    push cx
-    push ds
-    pop  es
-    lea  di, [bx].TCB.sda_hdr
-    mov  cx, (SDA_HEADER_SIZE / 2)
-    push ds
-    mov  si, sda_off
-    mov  ds, sda_seg
-    cld
-    rep  movsw
-    pop  ds
-    pop  cx
-    pop  di
-    pop  si
-
-    ; Exchange live 400B IOStack slice into io_swap_buf
-    call exchange_iostack_slice
-    jmp  SHORT claim_io_stack
-
-wait_for_io_buf:
-    push dx
-    push si
-    mov  bl, al
-    mov  dl, STATE_WAIT_IO
-    call boost_and_block_on_dos
-    pop  si
-    pop  dx
-    mov  ds, cs:[dgroup_seg]
-    jmp  SHORT tier_io_retry
-
-claim_io_stack:
-    mov  al, current_tid
-    mov  io_stack_owner, al
 
 mark_in_dos_and_call:
+    ; 3. Lazy SDA swap (only after thread is cleared to enter DOS)
+    mov  al, current_tid
+    cmp  sda_owner_tid, al
+    je   set_in_dos_flag
+    call swap_full_sda
+
+set_in_dos_flag:
     mov  bx, current_tcb
     or   [bx].TCB.tcb_flags, TCB_FLG_IN_DOS
 
@@ -971,8 +801,8 @@ mark_in_dos_and_call:
     pushf
     call DWORD PTR cs:[old_int21]
 
-    ; --- POST-CALL: Preserve DOS return registers & flags, release tier ---
-    pushf                           ; Save DOS return flags (CF, ZF, etc.)
+    ; --- POST-CALL ---
+    pushf
     push ds
     push ax
     push bx
@@ -984,72 +814,31 @@ mark_in_dos_and_call:
     mov  bx, current_tcb
     and  [bx].TCB.tcb_flags, NOT TCB_FLG_IN_DOS
 
-    ; Release whichever DOS stack this thread owned and wake waiters
     mov  al, current_tid
     cmp  disk_stack_owner, al
-    jne  chk_rel_aux
-    mov  disk_stack_owner, NO_THREAD
-    mov  dl, STATE_WAIT_DISK
-    call restore_prio_and_wake
-    jmp  SHORT finish_int21_exit
-
-chk_rel_aux:
-    cmp  aux_stack_owner, al
-    jne  chk_rel_io
-    mov  aux_stack_owner, NO_THREAD
-    mov  dl, STATE_WAIT_AUX
-    call restore_prio_and_wake
-    jmp  SHORT finish_int21_exit
-
-chk_rel_io:
-    cmp  io_stack_owner, al
     jne  finish_int21_exit
 
-    ; Did we displace another thread''s IOStack into io_swap_buf?
-    mov  ah, io_swap_owner
-    cmp  ah, NO_THREAD
-    je   clear_io_owner
-
-    ; Restore displaced thread''s 400B IOStack slice & 24B SDA header
-    push es
-    call exchange_iostack_slice
-    mov  bl, ah
-    xor  bh, bh
-    SHL_IMM bx, 6
-    add  bx, OFFSET tcb_table
-    and  [bx].TCB.tcb_flags, NOT TCB_FLG_SWAPPED_IO
-
-    push si
-    push di
-    mov  es, sda_seg
-    mov  di, sda_off
-    lea  si, [bx].TCB.sda_hdr
-    mov  cx, (SDA_HEADER_SIZE / 2)
-    cld
-    rep  movsw
-    pop  di
-    pop  si
-    pop  es
-
-    mov  io_stack_owner, ah
-    mov  io_swap_owner, NO_THREAD
-    jmp  SHORT wake_io_waiters
-
-clear_io_owner:
-    mov  io_stack_owner, NO_THREAD
-wake_io_waiters:
-    mov  dl, STATE_WAIT_IO
+    mov  disk_stack_owner, NO_THREAD
+    mov  dl, STATE_WAIT_DISK
     call restore_prio_and_wake
 
 finish_int21_exit:
     ; Copy DOS return flags into caller''s IRET frame on stack:
-    ; Stack layout: [SP+0]=CX, [SP+2]=BX, [SP+4]=AX, [SP+6]=DS, [SP+8]=DOS_FLAGS,
-    ;               [SP+10]=IP, [SP+12]=CS, [SP+14]=CALLER_FLAGS
+    ; Stack layout:
+    ;     [SP+0]   DX
+    ;     [SP+2]   CX
+    ;     [SP+4]   BX
+    ;     [SP+6]   AX
+    ;     [SP+8]   DS
+    ;     [SP+10]  DOS_FLAGS
+    ;     [SP+12]  IP
+    ;     [SP+14]  CS
+    ;     [SP+16]  CALLER_FLAGS
     mov  bx, sp
-    mov  ax, ss:[bx+8]              ; AX = flags returned by DOS
+    mov  ax, ss:[bx+10]             ; AX = flags returned by DOS
     and  ax, 0FD5h                  ; Mask status flags (CF,PF,AF,ZF,SF,OF,DF)
-    and  WORD PTR ss:[bx+14], NOT 0FD5h
-    or   ss:[bx+14], ax             ; Merge into caller''s IRET FLAGS word
+    and  WORD PTR ss:[bx+16], NOT 0FD5h
+    or   ss:[bx+16], ax             ; Merge into caller''s saved flags
 
     pop  dx
     pop  cx
@@ -1094,9 +883,18 @@ no_prio_boost:
     mov  [si].TCB.tcb_state, dl     ; Mark current thread waiting
 
     ; Save caller''s original DS into scratch_ds for soft_context_switch
+    ; Stack:
+    ;     [bp+0]   BP
+    ;     [bp+2]   IP
+    ;     [bp+4]   SI
+    ;     [bp+6]   DX
+    ;     [bp+8]   ES
+    ;     [bp+10]  BX
+    ;     [bp+12]  AX
+    ;     [bp+14]  DS
     push bp
     mov  bp, sp
-    mov  ax, ss:[bp+10]             ; Original DS pushed at entry of isr_int21
+    mov  ax, ss:[bp+14]             ; Original DS pushed at entry of isr_int21
     mov  cs:[scratch_ds], ax
     pop  bp
 
@@ -1346,25 +1144,38 @@ skip_atexit_reg:
     ; 2. Discover DOS Swappable Data Area via INT 21h AX=5D06h
     push ds
     mov  ax, 5D06h
-    int  21h                        ; Returns DS:SI = SDA pointer
+    int  21h                        ; Returns DS:SI => SDA pointer, CX = swap-in-DOS size
     mov  ax, ds
     pop  ds
     mov  sda_seg, ax
     mov  sda_off, si
+    mov  sda_size, cx
 
-    add  si, 0458h
-    mov  iostack_off, si
+    ; Allocate full SDA swap buffer for thread 0 (main thread) via malloc
+    push cx
+    call malloc
+    add  sp, 2
 
-    ; 3. Clear TCB table and initialize thread 0 (main C thread)
+    ; 3. Clear TCB table and initialize thread 0
     push ds
     pop  es
     mov  di, OFFSET tcb_table
     mov  cx, (( SIZEOF TCB * MAX_THREADS ) / 2)
+    push ax
     xor  ax, ax
     cld
     rep  stosw
+    pop  ax
 
     mov  bx, OFFSET tcb_table
+    IF @DataSize
+        mov  [bx].TCB.sda_buf_off, ax
+        mov  [bx].TCB.sda_buf_seg, dx
+    ELSE
+        mov  [bx].TCB.sda_buf_off, ax
+        mov  [bx].TCB.sda_buf_seg, ds
+    ENDIF
+
     mov  [bx].TCB.tcb_state, STATE_RUNNING
     mov  al, main_prio
     and  al, 07h
@@ -1373,13 +1184,15 @@ skip_atexit_reg:
     mov  ax, STKHQQ
     mov  [bx].TCB.stk_limit, ax
 
-    mov  current_tid, 0
+    xor  ax, ax
     mov  current_tcb, OFFSET tcb_table
+    mov  current_tid, al
     mov  active_mask, 01h
-    mov  join_all_mask, 00h
-    mov  break_flag, 0
-    mov  break_count, 0
-    mov  crit_err_code, 0
+    mov  join_all_mask, al
+    mov  break_flag, al
+    mov  break_count, al
+    mov  crit_err_code, ax
+    mov  sda_owner_tid, al
 
     mov  di, OFFSET join_wait_mask
     mov  cx, (MAX_THREADS / 2)
@@ -1488,11 +1301,6 @@ skip_hook_33:
     SAVE_AND_HOOK 67h, old_int67, isr_int67
 
 skip_hook_67:
-    mov  cs:[calib_iostack], 1
-    mov  ah, 0Bh                    ; Triggers INT 16h on DOS IOStack
-    int  21h
-    mov  cs:[calib_iostack], 0
-
     ; 5. Configure 8253 PIT channel 0 rate and install INT 21h & INT 08h hooks
     mov  cl, pit_shift
     and  cl, 03h
@@ -1563,6 +1371,23 @@ threading_abort ENDP
 threading_shutdown PROC PUBLIC USES si di ds
     LOAD_DS_DGROUP
     call unhook_hardware
+
+    ; Mark thread 0 (and any unjoined threads) as STATE_ZOMBIE so
+    ; reap_zombie_stacks frees all remaining SDA buffers and heap stacks.
+    pushf
+    cli
+    mov  sda_owner_tid, NO_THREAD
+    mov  bx, OFFSET tcb_table
+    mov  cx, MAX_THREADS
+shutdown_mark_loop:
+    cmp  [bx].TCB.tcb_state, STATE_UNUSED
+    je   shutdown_mark_next
+    mov  [bx].TCB.tcb_state, STATE_ZOMBIE
+shutdown_mark_next:
+    add  bx, SIZEOF TCB
+    loop shutdown_mark_loop
+    popf
+
     call reap_zombie_stacks
     ret
 threading_shutdown ENDP
@@ -1592,7 +1417,7 @@ threading_get_critical_error PROC PUBLIC
 threading_get_critical_error ENDP
 
 ;-----------------------------------------------------------------------------
-; reap_zombie_stacks - Lazily free() auto-allocated stacks of exited threads
+; reap_zombie_stacks - Lazily free SDA buffers and auto-allocated stacks
 ;-----------------------------------------------------------------------------
 reap_zombie_stacks PROC NEAR
     mov  si, OFFSET tcb_table
@@ -1603,10 +1428,41 @@ reap_loop:
     cli
     cmp  [si].TCB.tcb_state, STATE_ZOMBIE
     jne  reap_next_popf
+
+    ; 1. Free the thread''s dynamic SDA buffer if allocated
+    mov  ax, [si].TCB.sda_buf_off
+    mov  dx, [si].TCB.sda_buf_seg
+    IF @DataSize
+        mov  cx, ax
+        or   cx, dx
+    ELSE
+        or   ax, ax
+    ENDIF
+    jz   reap_check_stack
+
+    mov  [si].TCB.sda_buf_off, 0
+    mov  [si].TCB.sda_buf_seg, 0
+    popf
+
+    IF @DataSize
+        push dx
+        push ax
+        call free
+        add  sp, 4
+    ELSE
+        push ax
+        call free
+        add  sp, 2
+    ENDIF
+
+    pushf
+    cli
+reap_check_stack:
+    ; 2. Free the thread''s stack if it was auto-allocated via malloc
     test [si].TCB.tcb_flags, TCB_FLG_OWN_STACK
     jz   reap_mark_unused
 
-    ; Clear flag and latch pointer under CLI before calling C runtime free()
+    ; Clear flag and latch pointer with interrupts disabled before calling free
     and  [si].TCB.tcb_flags, NOT TCB_FLG_OWN_STACK
     mov  ax, [si].TCB.stk_alloc_off
     mov  dx, [si].TCB.stk_alloc_seg
@@ -1662,19 +1518,69 @@ find_slot_loop:
     jmp  create_exit
 
 found_slot:
-    ; 3. Resolve stack_size (0 -> DEFAULT_STACK_SIZE)
+    ; 3a. Allocate full SDA swap buffer for the new thread via malloc
+    push sda_size
+    call malloc
+    add  sp, 2
+    IF @DataSize
+        mov  cx, ax
+        or   cx, dx
+        jnz  save_sda_far
+        mov  al, MT_ERR_NO_MEMORY
+        jmp  create_err_free_sda
+    save_sda_far:
+        mov  [si].TCB.sda_buf_off, ax
+        mov  [si].TCB.sda_buf_seg, dx
+    ELSE
+        or   ax, ax
+        jnz  save_sda_near
+        mov  al, MT_ERR_NO_MEMORY
+        jmp  create_err_free_sda
+    save_sda_near:
+        mov  [si].TCB.sda_buf_off, ax
+        mov  [si].TCB.sda_buf_seg, ds
+    ENDIF
+
+    ; Copy live idle DOS SDA into the new thread''s buffer so it starts clean
+    push ax
+    push dx
+    push si
+    push di
+    push ds
+    push es
+
+    mov  es, [si].TCB.sda_buf_seg
+    mov  di, [si].TCB.sda_buf_off
+    mov  si, sda_off
+    mov  ax, sda_seg
+    mov  cx, sda_size
+    shr  cx, 1
+    mov  ds, ax
+    cld
+    rep  movsw
+    jnc  skip_sda_copy_odd
+    movsb
+skip_sda_copy_odd:
+    pop  es
+    pop  ds
+    pop  di
+    pop  si
+    pop  dx
+    pop  ax
+
+    ; 3b. Resolve stack_size (0 -> DEFAULT_STACK_SIZE)
     mov  bx, stack_size
     or   bx, bx
     jnz  chk_min_stack
     mov  bx, DEFAULT_STACK_SIZE
 chk_min_stack:
-    cmp  bx, 128
+    cmp  bx, MINIMUM_STACK_SIZE
     jae  resolve_stack_ptr
-    mov  bx, 128
+    mov  bx, MINIMUM_STACK_SIZE
 resolve_stack_ptr:
     mov  stack_size, bx
 
-    ; 4. Resolve stack_ptr (NULL -> allocate via C runtime malloc)
+    ; 4. Resolve stack_ptr (NULL -> allocate via malloc)
     mov  [si].TCB.tcb_flags, 0
     IF @DataSize
         mov  ax, WORD PTR stack_ptr
@@ -1721,7 +1627,7 @@ resolve_stack_ptr:
     ;    AX = base offset, DX = stack segment
     ;    In HUGE model (@DataSize == 2), normalize DX:AX so stack_size
     ;    addition cannot wrap a 64 KB segment boundary (stk_alloc_seg:off
-    ;    was already latched above so free() receives the raw malloc ptr).
+    ;    was already latched above so free receives the raw ptr from malloc).
     IF @DataSize EQ 2
         NORMALIZE_FAR_PTR dx, ax, cx
     ENDIF
@@ -1803,6 +1709,24 @@ ENDIF
     sti
 
     mov  ax, di                     ; Return new TID (1..7) in AL
+    jmp  SHORT create_exit
+
+create_err_free_sda:
+    IF @DataSize
+        push [si].TCB.sda_buf_seg
+        push [si].TCB.sda_buf_off
+        call free
+        add  sp, 4
+    ELSE
+        push [si].TCB.sda_buf_off
+        call free
+        add  sp, 2
+    ENDIF
+
+    mov  [si].TCB.sda_buf_off, 0
+    mov  [si].TCB.sda_buf_seg, 0
+    mov  al, MT_ERR_NO_MEMORY
+
 create_exit:
     xor  ah, ah
     ret
@@ -1954,6 +1878,12 @@ thread_exit PROC PUBLIC
     not  al
     and  active_mask, al
 
+    ; Release SDA ownership if held by the exiting thread
+    cmp  sda_owner_tid, bl
+    jne  skip_exit_sda_rel
+    mov  sda_owner_tid, NO_THREAD
+skip_exit_sda_rel:
+
 IFDEF USE_FPU
     ; Release FPU ownership if held by the exiting thread
     cmp  fpu_owner, bl
@@ -1985,16 +1915,10 @@ chk_join_all_wake:
     call wake_all_waiters
 
 mark_exit_state:
-    ; 4. Mark TCB slot STATE_ZOMBIE (if malloc stack) or STATE_UNUSED
+    ; 4. Every thread owns a heap-allocated sda_buf, so always mark STATE_ZOMBIE
     mov  bx, current_tcb
-    test [bx].TCB.tcb_flags, TCB_FLG_OWN_STACK
-    jnz  mark_zombie
-    mov  [bx].TCB.tcb_state, STATE_UNUSED
-    jmp  SHORT exit_switch
-mark_zombie:
     mov  [bx].TCB.tcb_state, STATE_ZOMBIE
 
-exit_switch:
     mov  ax, ds
     mov  ss, ax
     mov  sp, OFFSET isr_stack_top
