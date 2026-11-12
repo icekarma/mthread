@@ -192,6 +192,7 @@ kbd_available ENDP
 ; Non-blocking: returns 16-bit key (AL=ASCII, AH=scan) or 0 if buffer empty.
 ;-----------------------------------------------------------------------------
 kbd_getkey PROC PUBLIC USES es
+    call mt_enter_isr
     xor  ax, ax
     mov  es, ax
     mov  dx, es:[041Ah]
@@ -199,6 +200,7 @@ kbd_getkey PROC PUBLIC USES es
     je   kbd_no_key
     int  16h
 kbd_no_key:
+    call mt_leave_isr
     ret
 kbd_getkey ENDP
 

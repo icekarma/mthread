@@ -249,9 +249,12 @@ do_bios_chain:
     mov  al, pit_sub_reload
     mov  pit_sub_count, al
     ; Chain to original BIOS INT 08h handler on isr_stack (BIOS sends EOI)
+    inc  cs:[bios_lock]
     pushf
     call DWORD PTR cs:[old_int08]
     cli                             ; Ensure interrupts are off again for scheduler
+    dec  cs:[bios_lock]
+    mov  ds, cs:[dgroup_seg]        ; Re-establish DS=DGROUP in case INT 1Ch altered it
 
 tick_sleepers:
     ; 4. Decrement sleep_ticks for any STATE_SLEEPING threads
@@ -488,7 +491,7 @@ fpu_save_bx PROC NEAR
     ret
 
 do_hw_fsave:
-    fnsave [bx]
+    fsave [bx]
     fwait
 fpu_save_done:
     ret
@@ -665,35 +668,37 @@ func_name PROC FAR
     inc  cs:[bios_lock]
     pushf
     call DWORD PTR cs:[old_vec]
+    push bp
+    push ax
+    mov  bp, sp
+    ; Stack layout:
+    ;     [bp+0]  AX
+    ;     [bp+2]  BP
+    ;     [bp+4]  IP
+    ;     [bp+6]  CS
+    ;     [bp+8]  CALLER_FLAGS
     pushf
+    pop  ax
+    and  ax, 0CD5h                  ; Mask BIOS status flags (CF,PF,AF,ZF,SF,DF,OF)
+    and  WORD PTR ss:[bp+8], NOT 0CD5h ; Preserve caller''s IF and TF
+    or   ss:[bp+8], ax              ; Merge BIOS status flags into IRET frame
+    pop  ax
+    pop  bp
     dec  cs:[bios_lock]
-    popf
-    retf 2                          ; Return preserving BIOS output flags!
+    iret
 func_name ENDP
 ENDM
 
 DEFINE_BIOS_WRAPPER isr_int10, old_int10
 DEFINE_BIOS_WRAPPER isr_int13, old_int13
 DEFINE_BIOS_WRAPPER isr_int15, old_int15
+DEFINE_BIOS_WRAPPER isr_int16, old_int16
 DEFINE_BIOS_WRAPPER isr_int17, old_int17
 DEFINE_BIOS_WRAPPER isr_int29, old_int29
 DEFINE_BIOS_WRAPPER isr_int2e, old_int2e
 DEFINE_BIOS_WRAPPER isr_int2f, old_int2f
 DEFINE_BIOS_WRAPPER isr_int33, old_int33
 DEFINE_BIOS_WRAPPER isr_int67, old_int67
-
-;-----------------------------------------------------------------------------
-; INT 16h wrapper also performs one-time IOStack offset calibration at init
-;-----------------------------------------------------------------------------
-isr_int16 PROC FAR
-    inc  cs:[bios_lock]
-    pushf
-    call DWORD PTR cs:[old_int16]
-    pushf
-    dec  cs:[bios_lock]
-    popf
-    retf 2
-isr_int16 ENDP
 
 ;-----------------------------------------------------------------------------
 ; isr_int1b - BIOS Ctrl+Break handler
@@ -833,19 +838,19 @@ set_in_dos_flag:
 finish_int21_exit:
     ; Copy DOS return flags into caller''s IRET frame on stack:
     ; Stack layout:
-    ;     [SP+0]   DX
-    ;     [SP+2]   CX
-    ;     [SP+4]   BX
-    ;     [SP+6]   AX
-    ;     [SP+8]   DS
-    ;     [SP+10]  DOS_FLAGS
-    ;     [SP+12]  IP
-    ;     [SP+14]  CS
-    ;     [SP+16]  CALLER_FLAGS
+    ;     [sp+0]   DX
+    ;     [sp+2]   CX
+    ;     [sp+4]   BX
+    ;     [sp+6]   AX
+    ;     [sp+8]   DS
+    ;     [sp+10]  DOS_FLAGS
+    ;     [sp+12]  IP
+    ;     [sp+14]  CS
+    ;     [sp+16]  CALLER_FLAGS
     mov  bx, sp
     mov  ax, ss:[bx+10]             ; AX = flags returned by DOS
-    and  ax, 0FD5h                  ; Mask status flags (CF,PF,AF,ZF,SF,OF,DF)
-    and  WORD PTR ss:[bx+16], NOT 0FD5h
+    and  ax, 0CD5h                  ; Mask status flags (CF,PF,AF,ZF,SF,OF,DF)
+    and  WORD PTR ss:[bx+16], NOT 0CD5h
     or   ss:[bx+16], ax             ; Merge into caller''s saved flags
 
     pop  dx
@@ -891,7 +896,7 @@ no_prio_boost:
     mov  [si].TCB.tcb_state, dl     ; Mark current thread waiting
 
     ; Save caller''s original DS into scratch_ds for soft_context_switch
-    ; Stack:
+    ; Stack layout:
     ;     [bp+0]   BP
     ;     [bp+2]   IP
     ;     [bp+4]   SI
@@ -1181,7 +1186,7 @@ skip_atexit_reg:
     mov  sda_off, si
     mov  sda_size, cx
 
-    ; Allocate full SDA swap buffer for thread 0 (main thread) via malloc
+    ; Allocate full SDA swap buffer for thread 0 (main thread) via malloc()
     push cx
     call malloc
     add  sp, 2
@@ -1461,6 +1466,7 @@ threading_get_critical_error ENDP
 ; reap_zombie_stacks - Lazily free SDA buffers and auto-allocated stacks
 ;-----------------------------------------------------------------------------
 reap_zombie_stacks PROC NEAR
+    inc  cs:[bios_lock]             ; Lock preemption while calling CRT free()
     mov  si, OFFSET tcb_table
     mov  di, MAX_THREADS
 
@@ -1499,11 +1505,11 @@ reap_loop:
     pushf
     cli
 reap_check_stack:
-    ; 2. Free the thread''s stack if it was auto-allocated via malloc
+    ; 2. Free the thread''s stack if it was auto-allocated via malloc()
     test [si].TCB.tcb_flags, TCB_FLG_OWN_STACK
     jz   reap_mark_unused
 
-    ; Clear flag and latch pointer with interrupts disabled before calling free
+    ; Clear flag and latch pointer with interrupts disabled before calling free()
     and  [si].TCB.tcb_flags, NOT TCB_FLG_OWN_STACK
     mov  ax, [si].TCB.stk_alloc_off
     mov  dx, [si].TCB.stk_alloc_seg
@@ -1530,6 +1536,7 @@ reap_next_popf:
     add  si, SIZEOF TCB
     dec  di
     jnz  reap_loop
+    dec  cs:[bios_lock]             ; Unlock preemption
     ret
 reap_zombie_stacks ENDP
 
@@ -1540,6 +1547,7 @@ reap_zombie_stacks ENDP
 ;-----------------------------------------------------------------------------
 thread_create PROC PUBLIC USES si di ds, func: CODE_PTR, arg: DATA_PTR, stack_ptr: DATA_PTR, stack_size: WORD, priority: BYTE
     LOAD_DS_DGROUP
+    inc  cs:[bios_lock]             ; Lock preemption across slot scan & malloc()
 
     ; 1. Reclaim any exited STATE_ZOMBIE stacks first
     call reap_zombie_stacks
@@ -1559,7 +1567,7 @@ find_slot_loop:
     jmp  create_exit
 
 found_slot:
-    ; 3a. Allocate full SDA swap buffer for the new thread via malloc
+    ; 3a. Allocate full SDA swap buffer for the new thread via malloc()
     push sda_size
     call malloc
     add  sp, 2
@@ -1621,7 +1629,7 @@ chk_min_stack:
 resolve_stack_ptr:
     mov  stack_size, bx
 
-    ; 4. Resolve stack_ptr (NULL -> allocate via malloc)
+    ; 4. Resolve stack_ptr (NULL -> allocate via malloc())
     mov  [si].TCB.tcb_flags, 0
     IF @DataSize
         mov  ax, WORD PTR stack_ptr
@@ -1666,7 +1674,7 @@ resolve_stack_ptr:
     ;    AX = base offset, DX = stack segment
     ;    In HUGE model (@DataSize == 2), normalize DX:AX so stack_size
     ;    addition cannot wrap a 64 KB segment boundary (stk_alloc_seg:off
-    ;    was already latched above so free receives the raw ptr from malloc).
+    ;    was already latched above so free() receives the raw ptr from malloc()).
     IF @DataSize EQ 2
         NORMALIZE_FAR_PTR dx, ax, cx
     ENDIF
@@ -1768,6 +1776,7 @@ create_err_free_sda:
     mov  al, MT_ERR_NO_MEMORY
 
 create_exit:
+    dec  cs:[bios_lock]             ; Unlock preemption
     xor  ah, ah
     ret
 thread_create ENDP
@@ -1955,6 +1964,15 @@ chk_join_all_wake:
     call wake_all_waiters
 
 mark_exit_state:
+    ; Release DiskStack lock if held by the exiting thread
+    mov  al, current_tid
+    cmp  disk_stack_owner, al
+    jne  skip_exit_disk_rel
+    mov  disk_stack_owner, NO_THREAD
+    mov  dl, STATE_WAIT_DISK
+    call restore_prio_and_wake
+
+skip_exit_disk_rel:
     ; 4. Every thread owns a heap-allocated sda_buf, so always mark STATE_ZOMBIE
     mov  bx, current_tcb
     mov  [bx].TCB.tcb_state, STATE_ZOMBIE
@@ -2282,7 +2300,7 @@ ev_set_sig:
 event_init ENDP
 
 event_set PROC PUBLIC USES si di ds, ev: DATA_PTR
-    mov  dx, ds                     ; Save caller''s DS in DX
+    mov  cx, ds                     ; Save caller''s DS in CX (DX is used by wake_*)
     mov  ds, cs:[dgroup_seg]
     LOAD_DATA_PTR di, ev
 
@@ -2299,7 +2317,7 @@ event_set PROC PUBLIC USES si di ds, ev: DATA_PTR
     ; leave ev_signaled = 0 (direct signal handoff)
     call wake_highest_waiter
     mov  es:[di].MT_EVENT.ev_wait_mask, al
-    mov  ax, dx
+    mov  ax, cx
     call preempt_if_higher
     popf
     ret
@@ -2309,7 +2327,7 @@ ev_set_wake_all:
     mov  es:[di].MT_EVENT.ev_signaled, 1
     mov  es:[di].MT_EVENT.ev_wait_mask, 0
     call wake_all_waiters
-    mov  ax, dx
+    mov  ax, cx
     call preempt_if_higher
     popf
     ret
@@ -2366,7 +2384,7 @@ event_reset PROC PUBLIC USES di, ev: DATA_PTR
 event_reset ENDP
 
 event_pulse PROC PUBLIC USES si di ds, ev: DATA_PTR
-    mov  dx, ds
+    mov  cx, ds                     ; Save caller''s DS in CX
     mov  ds, cs:[dgroup_seg]
     LOAD_DATA_PTR di, ev
 
@@ -2382,7 +2400,7 @@ event_pulse PROC PUBLIC USES si di ds, ev: DATA_PTR
 
     call wake_highest_waiter
     mov  es:[di].MT_EVENT.ev_wait_mask, al
-    mov  ax, dx
+    mov  ax, cx
     call preempt_if_higher
     popf
     ret
@@ -2390,7 +2408,7 @@ event_pulse PROC PUBLIC USES si di ds, ev: DATA_PTR
 ev_pulse_all:
     mov  es:[di].MT_EVENT.ev_wait_mask, 0
     call wake_all_waiters
-    mov  ax, dx
+    mov  ax, cx
     call preempt_if_higher
 
 ev_pulse_done:
