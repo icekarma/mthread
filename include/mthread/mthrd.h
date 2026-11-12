@@ -12,7 +12,7 @@
 #include <stddef.h>
 
 #include <mthread/thread.h>
-#include <mthread/isr.h>
+#include <mthread/synchron.h>
 
 //===========================================================================
 // Class MThread - C++ wrapper for mthread.h's thread_* functions
