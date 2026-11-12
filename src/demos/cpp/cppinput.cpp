@@ -289,12 +289,12 @@ int main( void ) {
     MThreadManager* mgr = MThreadManager::GetInstance( );
     mgr->Initialize( MT_TICK_73HZ, MT_PRIO_LOW );
 
-    // 2. Construct worker MThreads
-    MThread t_inp( input_worker,     NULL, NULL, 1024, MT_PRIO_HIGH   );
-    MThread t_cmp( compute_worker,   NULL, NULL, 1024, MT_PRIO_NORMAL );
-    MThread t_spn( low_prio_spinner, NULL, NULL, 1024, MT_PRIO_LOW    );
-
     {
+        // 2. Construct worker MThreads
+        MThread t_inp( input_worker,     NULL, NULL, 1024, MT_PRIO_HIGH   );
+        MThread t_cmp( compute_worker,   NULL, NULL, 1024, MT_PRIO_NORMAL );
+        MThread t_spn( low_prio_spinner, NULL, NULL, 1024, MT_PRIO_LOW    );
+
         // 3. Hook INT 09h keyboard ISR and INT 33h mouse callback via RAII
         MKeyboard kbd( g_input_ev );
         MMouse    mouse( g_input_ev, MOUSE_EVT_ALL );
@@ -319,16 +319,18 @@ int main( void ) {
             }
             MThread::Sleep( 18 );
         }
+
+        // Ensure input thread wakes if it was blocked on g_input_ev
+        g_running = 0;
+        g_input_ev.Set( );
+
+        t_inp.Join( );
+        t_cmp.Join( );
+        t_spn.Join( );
     } // ~MMouse() and ~MKeyboard() automatically unhook INT 33h and INT 09h here
 
-    // Ensure input thread wakes if it was blocked on g_input_ev
-    g_input_ev.Set( );
-
-    t_inp.Join( );
-    t_cmp.Join( );
-    t_spn.Join( );
-
-    mgr->Shutdown( );
+    /* Shut down kernel */
+    mgr->ShutDown( );
     mgr->Release( );
 
     video_gotoxy( 22, 0 );

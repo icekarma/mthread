@@ -337,7 +337,7 @@ int main( void ) {
     t_prod.Join( );
     t_cons.Join( );
 
-    mgr->Shutdown( );
+    mgr->ShutDown( );
     mgr->Release( );
 
     video_gotoxy( 22, 0 );

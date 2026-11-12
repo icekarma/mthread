@@ -17,10 +17,10 @@ extern "C" {
 
 /* 1. Win32-style event object (4 bytes) */
 typedef struct {
-    unsigned char signaled;     /* 0 = non-signaled, 1 = signaled            */
-    unsigned char manual_reset; /* 0 = auto-reset,   1 = manual-reset        */
-    unsigned char wait_mask;    /* Bitmask of waiting threads (1 << tid)     */
-    unsigned char reserved;
+    unsigned char volatile signaled;     /* 0 = non-signaled, 1 = signaled            */
+    unsigned char          manual_reset; /* 0 = auto-reset,   1 = manual-reset        */
+    unsigned char volatile wait_mask;    /* Bitmask of waiting threads (1 << tid)     */
+    unsigned char          reserved;
 } mt_event_t;
 
 void MT_API event_init( mt_event_t* ev, unsigned char manual_reset, unsigned char initial_state );
@@ -31,10 +31,10 @@ void MT_API event_wait( mt_event_t* ev );
 
 /* 2. Recursive mutex with priority inheritance (4 bytes) */
 typedef struct {
-    tid_t         owner;        /* Owning TID (0..7) or MT_NO_THREAD (0xFF)  */
-    unsigned char lock_count;   /* Recursive acquisition depth (0..255)      */
-    unsigned char wait_mask;    /* Bitmask of threads waiting to acquire     */
-    unsigned char reserved;
+    tid_t         volatile owner;        /* Owning TID (0..7) or MT_NO_THREAD (0xFF)  */
+    unsigned char volatile lock_count;   /* Recursive acquisition depth (0..255)      */
+    unsigned char volatile wait_mask;    /* Bitmask of threads waiting to acquire     */
+    unsigned char          reserved;
 } mt_mutex_t;
 
 void MT_API mutex_init( mt_mutex_t* mtx );
@@ -44,9 +44,9 @@ void MT_API mutex_unlock( mt_mutex_t* mtx );
 
 /* 3. Counting semaphore (4 bytes) */
 typedef struct {
-    unsigned int  count;        /* Available count (0..65535)                */
-    unsigned char wait_mask;    /* Bitmask of waiting threads                */
-    unsigned char reserved;
+    unsigned int  volatile count;        /* Available count (0..65535)                */
+    unsigned char volatile wait_mask;    /* Bitmask of waiting threads                */
+    unsigned char          reserved;
 } mt_sem_t;
 
 void MT_API sem_init( mt_sem_t* sem, unsigned int initial_count );
@@ -56,8 +56,8 @@ void MT_API sem_post( mt_sem_t* sem );
 
 /* 4. Condition variable (2 bytes) */
 typedef struct {
-    unsigned char wait_mask;    /* Bitmask of waiting threads                */
-    unsigned char reserved;
+    unsigned char volatile wait_mask;    /* Bitmask of waiting threads                */
+    unsigned char          reserved;
 } mt_cond_t;
 
 void MT_API cond_init( mt_cond_t* cv );

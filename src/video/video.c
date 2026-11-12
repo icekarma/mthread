@@ -107,7 +107,8 @@ void MT_API video_puts( int const row, int const col, unsigned char const attr, 
 /*---------------------------------------------------------------------------*
  * video_putu8() - Write unsigned 8-bit integer to screen at specified row/col
  *---------------------------------------------------------------------------*/
-void MT_API video_putu8( int const row, int const col, unsigned char const attr, unsigned char const val ) {
+void MT_API video_putu8( int const row, int const col, unsigned char const attr, unsigned char const val_ ) {
+    unsigned char val = val_ % 100;
     video_putc( row, col,     attr, (unsigned char) ( ( val >= 10 ) ? ( '0' + ( val / 10 ) ) : ' ' ) );
     video_putc( row, col + 1, attr, (unsigned char) ( '0' + ( val % 10 ) ) );
 }

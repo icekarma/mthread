@@ -25,7 +25,7 @@ class MThreadManager {
     }
 
     ~MThreadManager( ) {
-        Shutdown( );
+        ShutDown( );
     }
 
     MThreadManager( MThreadManager const& other );
@@ -58,16 +58,16 @@ public:
         return s_ref_count;
     }
 
-    int Initialize( unsigned char pit_shift = MT_TICK_18HZ, unsigned char main_prio = MT_PRIO_NORMAL ) {
+    int Initialize( unsigned char tick_rate = MT_TICK_18HZ, unsigned char main_prio = MT_PRIO_NORMAL ) {
         if ( !cmp_xchg( &s_active, 0, 1 ) ) {
             return MT_ERR_INVALID;
         }
 
-        threading_init( pit_shift, main_prio );
+        threading_init( tick_rate, main_prio );
         return MT_ERR_NONE;
     }
 
-    void Shutdown( ) {
+    void ShutDown( ) {
         if ( !cmp_xchg( &s_active, 1, 2 ) ) {
             return;
         }

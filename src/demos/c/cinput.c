@@ -317,16 +317,19 @@ int main( void ) {
         thread_sleep( 18 );
     }
 
-    /* Unhook mouse and keyboard before shutting down kernel */
-    mouse_shutdown( );
-    kbd_shutdown( );
-
     /* Ensure input thread wakes if it was blocked on g_input_ev */
+    g_running = 0;
     event_set( &g_input_ev );
 
     thread_join( t_inp );
     thread_join( t_cmp );
     thread_join( t_spn );
+
+    /* Unhook mouse and keyboard before shutting down kernel */
+    mouse_shutdown( );
+    kbd_shutdown( );
+
+    /* Shut down kernel */
     threading_shutdown( );
 
     video_gotoxy( 22, 0 );

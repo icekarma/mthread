@@ -12,6 +12,7 @@
 #include <stddef.h>
 
 #include <mthread/thread.h>
+#include <mthread/isr.h>
 
 //===========================================================================
 // Class MThread - C++ wrapper for mthread.h's thread_* functions
@@ -57,10 +58,12 @@ public:
             return MT_ERR_INVALID;
         }
 
+        mt_enter_isr( );
         tid_t const ret = thread_create( func, arg, stack_ptr, stack_size, prio );
         if ( ret < MT_MAX_THREADS ) {
             tid = ret;
         }
+        mt_leave_isr( );
         return ret;
     }
 
@@ -90,7 +93,7 @@ public:
     }
 
     tid_t GetTid( ) const {
-        return ( tid != MT_NO_THREAD ) ? tid : thread_self( );
+        return tid;
     }
 
     unsigned char GetPriority( ) const {

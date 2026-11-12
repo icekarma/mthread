@@ -24,9 +24,12 @@ static const unsigned char    g_bar_chars[2]               = { 0xDB, 0xFE };
 /* CPU-bound work iterations */
 static unsigned int           g_burn_count                 = 8192;
 
+static mt_mutex_t             g_stdio_mtx;
+
 /*---------------------------------------------------------------------------
  * Recursive function to trigger MSC 7.00 __chkstk against DGROUP:STKHQQ
  *---------------------------------------------------------------------------*/
+#pragma check_stack( on )
 static unsigned int stack_probe_test( unsigned int depth ) {
     volatile unsigned char local_pad[32]; /* Force stack frame allocation */
     local_pad[0] = (unsigned char) depth;
@@ -37,6 +40,7 @@ static unsigned int stack_probe_test( unsigned int depth ) {
         return local_pad[0] + stack_probe_test( depth - 1 );
     }
 }
+#pragma check_stack( )
 
 /*---------------------------------------------------------------------------
  * Worker thread (TIDs 1 & 2): normal priority preemptive compute + sleep
@@ -116,6 +120,7 @@ static void MT_API disk_logger_worker( void* arg ) {
         stack_probe_test( 4 );
         video_puts( row, 18, 0x1C, "[DISK I/O]" );
 
+        mutex_lock( &g_stdio_mtx );
         fp = fopen( "MTTEST.LOG", "at" );
         if ( fp ) {
             fprintf( fp,
@@ -128,6 +133,7 @@ static void MT_API disk_logger_worker( void* arg ) {
             );
             fclose( fp );
         }
+        mutex_unlock( &g_stdio_mtx );
 
         g_iter_count[self] = g_disk_writes;
         video_puts( row, 18, 0x19, "[SLEEPING]" );
@@ -175,7 +181,7 @@ static void process_command_line( int argc, char* argv[] ) {
 }
 
 /*---------------------------------------------------------------------------
- * Main thread (TID 0): sets up UI, spawns threads, does DOS IOStack output
+ * Main thread (TID 0): sets up UI, spawns threads, does DOS output
  *---------------------------------------------------------------------------*/
 int main( int argc, char* argv[] ) {
     unsigned int main_ticks = 0;
@@ -192,7 +198,7 @@ int main( int argc, char* argv[] ) {
     video_ruler( 4, 5 );
 #endif
     video_puts(    1, 10, 0x1F,       "\xCD\xCD\xCD MS-DOS 8086 PREEMPTIVE MULTITHREADING C TEST HARNESS \xCD\xCD\xCD" );
-    video_puts(    3,  6, 0x17,   "PIT rate:  72.8 Hz (4x) | STKHQQ probes: ON | Hybrid SDA/IOStack: ON"   );
+    video_puts(    3,  6, 0x17,   "PIT rate:  72.8 Hz (4x) | STKHQQ probes: ON | Lazy Full-SDA Swap: ON"   );
     video_puts(    5,  4, 0x1B, "Thread        State       Activity                                 Count" );
     video_puts(    6,  4, 0x17, "\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4\xC4" );
     video_puts(    8,  4, 0x1F, "TID 1 (NORM)              [                                ]"             );
@@ -203,7 +209,7 @@ int main( int argc, char* argv[] ) {
     video_puts(   10, 31, 0x2F, "                                " );
     video_puts(   12,  4, 0x17, "TID 3 (LOW )  [PREEMPT ]  Spinner: [ ] (runs when 1&2 sleep)"             );
     video_puts(   14,  4, 0x17, "TID 4 (HIGH)  [SLEEPING]  File logger (MTTEST.LOG)"                       );
-    video_puts(   16,  4, 0x17, "TID 0 (MAIN)              DOS IOStack heartbeat"                          );
+    video_puts(   16,  4, 0x17, "TID 0 (MAIN)              DOS heartbeat"                                  );
     video_puts(   18, 12, 0x1A,         "Press 'Q' or Esc to shut down cleanly and return to DOS."         );
     video_putu32(  8, 66, 0x1E, 0 );
     video_putu32( 10, 66, 0x1E, 0 );
@@ -213,6 +219,9 @@ int main( int argc, char* argv[] ) {
 
     /* Remove previous log file if present */
     remove( "MTTEST.LOG" );
+
+    /* Initialize stdio mutex */
+    mutex_init( &g_stdio_mtx );
 
     /* Initialize scheduler at 4x stock PIT rate (72.8 Hz / 13.7 ms quantum) */
     threading_init( MT_TICK_73HZ, MT_PRIO_NORMAL );
@@ -224,10 +233,10 @@ int main( int argc, char* argv[] ) {
     /* Spawn a low-priority spinner thread with caller-supplied stack */
     t3 = thread_create( low_prio_spinner, NULL, g_custom_stack, sizeof( g_custom_stack ), MT_PRIO_LOW );
 
-    /* Spawn a high-priority Disk I/O logger thread */
+    /* Spawn a high-priority disk I/O logger thread */
     t4 = thread_create( disk_logger_worker, NULL, NULL, 1536, MT_PRIO_HIGH );
 
-    /* Main loop: exercises DOS IOStack (_kbhit/_getch & DOS AH=02h) */
+    /* Main loop */
     while ( g_running ) {
         if ( threading_is_break_requested( ) ) {
             g_running = 0;
@@ -242,9 +251,11 @@ int main( int argc, char* argv[] ) {
             }
         }
 
-        /* Position cursor on row 16 and print via DOS INT 21h IOStack (printf) */
+        /* Position cursor on row 16 and print via DOS INT 21h (printf) */
         video_gotoxy( 16, 66 );
+        mutex_lock( &g_stdio_mtx );
         printf( "%10u", ++main_ticks );
+        mutex_unlock( &g_stdio_mtx );
         video_gotoxy( 24, 79 );
 
         thread_sleep( 18 );

@@ -54,8 +54,8 @@ break_count     DB  0                   ; Consecutive Ctrl+C count (>=3 force-ab
 crit_err_code   DW  0                   ; Last INT 24h error (high=AH, low=DI)
 
 ; PIT & timer chaining state
-pit_shift_val   DB  0                   ; 0..3 (1x, 2x, 4x, 8x)
-pit_sub_reload  DB  1                   ; (1 SHL pit_shift_val)
+tick_rate_val   DB  0                   ; 0..3 (1x, 2x, 4x, 8x)
+pit_sub_reload  DB  1                   ; (1 SHL tick_rate_val)
 pit_sub_count   DB  1                   ; Countdown to BIOS INT 08h chain
 
 ; DOS SDA & stack ownership tracking
@@ -1151,9 +1151,9 @@ unhook_hardware ENDP
 ;=============================================================================
 
 ;-----------------------------------------------------------------------------
-; void MT_API threading_init(unsigned char pit_shift, unsigned char main_prio)
+; void MT_API threading_init(unsigned char tick_rate, unsigned char main_prio)
 ;-----------------------------------------------------------------------------
-threading_init PROC PUBLIC USES si di ds, pit_shift: BYTE, main_prio: BYTE
+threading_init PROC PUBLIC USES si di ds, tick_rate: BYTE, main_prio: BYTE
     LOAD_DS_DGROUP
     mov  cs:[dgroup_seg], ax
 
@@ -1337,9 +1337,9 @@ skip_hook_33:
 
 skip_hook_67:
     ; 5. Configure 8253 PIT channel 0 rate and install INT 21h & INT 08h hooks
-    mov  cl, pit_shift
+    mov  cl, tick_rate
     and  cl, 03h
-    mov  pit_shift_val, cl
+    mov  tick_rate_val, cl
     mov  al, 1
     shl  al, cl
     mov  pit_sub_reload, al
@@ -1371,7 +1371,7 @@ skip_hook_67:
     call DWORD PTR cs:[old_int21]
     pop  ds
 
-    ; Reprogram PIT channel 0 divisor = (65536 SHR pit_shift)
+    ; Reprogram PIT channel 0 divisor = (65536 SHR tick_rate)
     mov  al, 36h
     out  43h, al
     xor  ax, ax

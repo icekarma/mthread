@@ -28,7 +28,7 @@ extern "C" {
 #define MT_PRIO_HIGHEST_MINUS 6
 #define MT_PRIO_HIGHEST       7
 
-/* PIT tick rate shift factors for threading_init's pit_shift argument:
+/* PIT tick rates for threading_init's tick_rate argument:
 *   0 = 1x stock ( 18.2 Hz / 54.9 ms)
 *   1 = 2x stock ( 36.4 Hz / 27.5 ms)
 *   2 = 4x stock ( 72.8 Hz / 13.7 ms)
@@ -43,7 +43,7 @@ extern "C" {
 typedef void ( MT_API *thread_func_t )( void* arg );
 
 /* Core Lifecycle API */
-void          MT_API threading_init( unsigned char pit_shift, unsigned char main_prio );
+void          MT_API threading_init( unsigned char tick_rate, unsigned char main_prio );
 void          MT_API threading_shutdown( void );
 void          MT_API threading_abort( void );
 int           MT_API threading_is_break_requested( void );
