@@ -73,6 +73,15 @@ int main( void ) {
 
     threading_init( MT_TICK_73HZ, MT_PRIO_NORMAL );
 
+    if ( !thread_enable_fpu( 1 ) ) {
+        threading_shutdown( );
+        puts(
+            "Error: cfpu requires FPU context switching support.\n"
+            "Rebuild with FPU=OPTIN or FPU=ALL"
+        );
+        return 1;
+    }
+
     video_init( );
     video_clear( 0x17 );
     video_gotoxy( 24, 79 );

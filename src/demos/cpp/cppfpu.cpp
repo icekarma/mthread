@@ -62,6 +62,16 @@ int main( ) {
     MThreadManager* mgr = MThreadManager::GetInstance( );
     mgr->Initialize( MT_TICK_73HZ, MT_PRIO_NORMAL );
 
+    if ( !MThread::EnableFpu( ) ) {
+        mgr->ShutDown( );
+        mgr->Release( );
+        puts(
+            "Error: cppfpu requires FPU context switching support.\n"
+            "Rebuild with FPU=OPTIN or FPU=ALL"
+        );
+        return 1;
+    }
+
     video_init( );
     video_clear( 0x17 );
     video_gotoxy( 24, 79 );
