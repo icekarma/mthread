@@ -1228,6 +1228,8 @@ skip_atexit_reg:
     mov  break_count, al
     mov  crit_err_code, ax
     mov  sda_owner_tid, al
+    mov  cs:[bios_lock], al
+    mov  disk_stack_owner, NO_THREAD
 
     mov  di, OFFSET join_wait_mask
     mov  cx, (MAX_THREADS / 2)
